@@ -1,0 +1,45 @@
+name: glamcloset
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^2.27.0
+  firebase_database: ^10.4.9
+  flutter_local_notifications: ^18.0.1
+  firebase_auth: ^4.19.5
+  cupertino_icons: ^1.0.8
+  firebase_dynamic_links: ^5.0.0
+  http: ^0.13.5
+  crypto: ^3.0.1
+  cloud_firestore: ^4.0.0
+  emailjs: ^0.0.1
+  provider: ^6.0.5
+  share_plus: ^10.0.0
+  firebase_storage: ^11.3.0
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - images/
+    - fonts/
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: fonts/Cairo-Regular.ttf
+        - asset: fonts/Cairo-Bold.ttf
+          weight: 700

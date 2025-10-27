@@ -1,0 +1,677 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'CartScreen.dart';
+import 'settings_page.dart';
+import 'theme_notifier.dart';
+import 'AccountDetails.dart';
+import 'HomePage.dart' as homePageFile;
+
+class CustomerHomeScreen extends StatefulWidget {
+  const CustomerHomeScreen({super.key});
+
+  @override
+  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
+}
+
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  int _currentIndex = 1;
+
+  List<Map<String, dynamic>> allDresses = [];
+  Set<String> favoriteDressIds = {};
+  Set<String> cartDressIds = {};
+  final userId = FirebaseAuth.instance.currentUser?.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadClothesFromFirebase();
+    _loadUserCart();
+    _loadUserWishlist();
+  }
+
+  void _loadClothesFromFirebase() {
+    final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+    DatabaseReference ref = FirebaseDatabase.instance.ref('rented_clothes');
+    ref.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+
+      if (data != null) {
+        final filteredData = data.entries.where((e) {
+          final cloth = Map<String, dynamic>.from(e.value);
+          // Only show available dresses that are not owned by current user
+          return cloth['available'] == true && cloth['ownerId'] != currentUserId;
+        }).map((e) {
+          final cloth = Map<String, dynamic>.from(e.value);
+          return {
+            'id': cloth['id'] ?? '',
+            'title': cloth['name'] ?? 'Unknown',
+            'age': cloth['ageRange'] ?? 'N/A',
+            'price': cloth['price']?.toString() ?? '0',
+            'imageBase64': cloth['imageBase64'] ?? '',
+            'rentedCount': cloth['rentedCount'] ?? 0,
+          };
+        }).toList();
+
+        setState(() {
+          allDresses = filteredData;
+        });
+      } else {
+        setState(() => allDresses = []);
+      }
+    });
+  }
+
+
+
+
+  void _loadUserCart() {
+    if (userId == null) return;
+    final cartRef = FirebaseDatabase.instance.ref('users/$userId/cart');
+    cartRef.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data != null) {
+        setState(() {
+          cartDressIds = data.keys.map((e) => e.toString()).toSet();
+        });
+      } else {
+        setState(() => cartDressIds = {});
+      }
+    });
+  }
+
+  void _loadUserWishlist() {
+    if (userId == null) return;
+    final wishlistRef = FirebaseDatabase.instance.ref('users/$userId/wishlist');
+    wishlistRef.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data != null) {
+        setState(() {
+          favoriteDressIds = data.keys.map((e) => e.toString()).toSet();
+        });
+      } else {
+        setState(() => favoriteDressIds = {});
+      }
+    });
+  }
+
+  void _onNavBarTapped(int index) {
+    setState(() => _currentIndex = index);
+
+    if (index == 0) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CartScreen(
+            rentedItems: allDresses
+                .where((dress) => cartDressIds.contains(dress['id']))
+                .map((item) {
+              return {
+                'id': item['id'],
+                'title': item['title'],
+                'age': item['age'],
+                'price': item['price'],
+                'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
+                    ? 'data:image/png;base64,${item['imageBase64']}'
+                    : null,
+              };
+            }).toList(),
+          ),
+        ),
+      );
+    } else if (index == 1) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => homePageFile.HomePage()),
+      );
+    } else if (index == 2) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => SettingsPage()),
+      );
+    }
+  }
+
+  void _openWishlistScreen() {
+    final themeNotifier = Provider.of<ThemeNotifier>(context, listen: false);
+    final isDark = themeNotifier.isDarkMode;
+
+    List<Map<String, dynamic>> favoriteDresses =
+    allDresses.where((dress) => favoriteDressIds.contains(dress['id'])).toList();
+
+    final cardGradient = isDark
+        ? [Colors.deepPurple.shade700, Colors.blueGrey.shade600]
+        : [Colors.pink.shade300, Colors.purple.shade400];
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StatefulBuilder(
+          builder: (context, setStateWishlist) => Scaffold(
+            backgroundColor: isDark ? Colors.black : Colors.grey[50],
+            appBar: AppBar(
+              backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+              title: const Text('Wishlist'),
+            ),
+            body: favoriteDresses.isEmpty
+                ? Center(
+              child: Text(
+                'No favorites yet 😔',
+                style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54),
+              ),
+            )
+                : ListView.builder(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: favoriteDresses.length,
+              itemBuilder: (context, index) {
+                final item = favoriteDresses[index];
+                return _buildDressCard(item, cardGradient, isDark,
+                    onFavoriteToggle: () {
+                      setStateWishlist(() {
+                        favoriteDresses.removeAt(index);
+                      });
+                      _toggleWishlist(item);
+                    });
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _toggleWishlist(Map<String, dynamic> item) {
+    if (userId == null) return;
+    final wishlistRef =
+    FirebaseDatabase.instance.ref('users/$userId/wishlist/${item['id']}');
+
+    if (favoriteDressIds.contains(item['id'])) {
+      wishlistRef.remove();
+      setState(() {
+        favoriteDressIds.remove(item['id']);
+      });
+    } else {
+      wishlistRef.set({
+        'id': item['id'],
+        'title': item['title'],
+        'age': item['age'],
+        'price': item['price'],
+        'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
+            ? 'data:image/png;base64,${item['imageBase64']}'
+            : null,
+      });
+      setState(() {
+        favoriteDressIds.add(item['id']);
+      });
+    }
+  }
+
+  void _toggleCart(Map<String, dynamic> item) {
+    if (userId == null) return;
+    final cartRef = FirebaseDatabase.instance.ref('users/$userId/cart/${item['id']}');
+
+    if (cartDressIds.contains(item['id'])) return;
+    cartRef.set({
+      'id': item['id'],
+      'title': item['title'],
+      'age': item['age'],
+      'price': item['price'],
+      'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
+          ? 'data:image/png;base64,${item['imageBase64']}'
+          : null,
+    });
+  }
+
+  // 🔹 Full-screen image popup
+  void _showFullImage(String? base64Image) {
+    if (base64Image == null || base64Image.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context), // tap to close
+          child: InteractiveViewer(
+            child: Image.memory(
+              base64Decode(base64Image),
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDressCard(Map<String, dynamic> item, List<Color> cardGradient, bool isDark,
+      {VoidCallback? onFavoriteToggle}) {
+    final isFavorite = favoriteDressIds.contains(item['id']);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: cardGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: isDark ? Colors.black54 : Colors.black26,
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              leading: GestureDetector(
+                onTap: () => _showFullImage(item['imageBase64']),
+                child: CircleAvatar(
+                  radius: 28,
+                  backgroundImage: item['imageBase64'] != null &&
+                      item['imageBase64'].isNotEmpty
+                      ? MemoryImage(base64Decode(item['imageBase64']))
+                      : null,
+                  backgroundColor: Colors.grey[300],
+                  child: item['imageBase64'] == null || item['imageBase64'].isEmpty
+                      ? const Icon(Icons.image, color: Colors.grey)
+                      : null,
+                ),
+              ),
+              title: Text(
+                item['title'],
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black,
+                    fontSize: 14),
+              ),
+              subtitle: Text(
+                'Age: ${item['age']}',
+                style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54, fontSize: 12),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    onPressed: onFavoriteToggle ?? () {
+                      _toggleWishlist(item);
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white, size: 20),
+                    onPressed: () {
+                      Share.share(
+                        '👗 Check out this Omani outfit on GlamCloset!\n'
+                            '✨ ${item['title']} - ${item['price']} OMR\n\n'
+                            'Rent it now on GlamCloset App! 💫',
+                        subject: 'GlamCloset Outfit',
+                      );
+                    },
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      _toggleCart(item);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${item['title']} added to cart')),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: cardGradient[0],
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                    child: const Text('Rent'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: -13,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.red[700],
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(20),
+                  bottomLeft: Radius.circular(12),
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                '${item['price']} OMR',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Trending Now Section
+  Widget _buildTrendingNowSection(bool isDark) {
+    // Sort by current rentedCount dynamically
+    final trendingDresses = List<Map<String, dynamic>>.from(allDresses)
+      ..sort((a, b) => (b['rentedCount'] ?? 0).compareTo(a['rentedCount'] ?? 0));
+
+    final topTrending = trendingDresses.take(6).toList();
+    if (topTrending.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text(
+            '🔥 Trending Now',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 230,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: topTrending.length,
+            itemBuilder: (context, index) {
+              final item = topTrending[index];
+              final isFavorite = favoriteDressIds.contains(item['id']);
+              final cardGradient = isDark
+                  ? [Colors.deepPurple.shade700, Colors.blueGrey.shade600]
+                  : [Colors.pink.shade300, Colors.purple.shade400];
+
+              return _buildTrendingDressCard(item, cardGradient, isFavorite, isDark);
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+// Trending dress card
+  Widget _buildTrendingDressCard(
+      Map<String, dynamic> item,
+      List<Color> cardGradient,
+      bool isFavorite,
+      bool isDark,
+      ) {
+    return Container(
+      width: 180,
+      margin: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          colors: cardGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            flex: 5,
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+                  child: GestureDetector(
+                    onTap: () => _showFullImage(item['imageBase64']),
+                    child: item['imageBase64'] != null && item['imageBase64'].isNotEmpty
+                        ? Image.memory(
+                      base64Decode(item['imageBase64']),
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    )
+                        : Image.asset(
+                      'images/default.png',
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${item['price']} OMR',
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    item['title'],
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black,
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'Age: ${item['age']}',
+                    style: TextStyle(
+                        fontSize: 11, color: isDark ? Colors.white70 : Colors.grey[800]),
+                  ),
+                  Text(
+                    '${item['rentedCount'] ?? 0} rented',
+                    style: const TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 4),
+                  FittedBox(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          onPressed: () => _toggleWishlist(item),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            _toggleCart(item);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('${item['title']} added to cart')),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: cardGradient[0],
+                            padding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            textStyle: const TextStyle(fontSize: 12),
+                          ),
+                          child: const Text('Rent'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    final themeNotifier = Provider.of<ThemeNotifier>(context);
+    final isDark = themeNotifier.isDarkMode;
+    final bgColor = isDark ? Colors.black : Colors.grey[50];
+    final cardGradient = isDark
+        ? [Colors.deepPurple.shade700, Colors.blueGrey.shade600]
+        : [Colors.pink.shade300, Colors.purple.shade400];
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        title: const Text('GlamCloset', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.favorite, color: Colors.pink),
+            onPressed: _openWishlistScreen,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Search + Profile
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const AccountDetailsPage()),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.green,
+                      child: Icon(Icons.person, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Search dresses...',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[800] : Colors.grey[200],
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon:
+                      Icon(Icons.mic, color: isDark ? Colors.white : Colors.black),
+                      onPressed: () {},
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Dresses List with Trending
+            Expanded(
+              child: allDresses.isEmpty
+                  ? Center(
+                child: Text(
+                  'No dresses available yet 👗',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                  ),
+                ),
+              )
+                  : ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _buildTrendingNowSection(isDark),
+                  ...allDresses.map(
+                        (item) => _buildDressCard(item, cardGradient, isDark),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: _onNavBarTapped,
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        selectedItemColor: Colors.pink,
+        unselectedItemColor: isDark ? Colors.white70 : Colors.grey[600],
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart), label: 'Cart'),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+        ],
+      ),
+    );
+  }
+}

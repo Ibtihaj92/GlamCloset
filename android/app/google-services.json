@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "530667913030",
+    "project_id": "glamcloset-42dc2",
+    "storage_bucket": "glamcloset-42dc2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:530667913030:android:cd42bcbea677c5efed2f47",
+        "android_client_info": {
+          "package_name": "com.example.glamcloset"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSm71zE2TNfiZsEGWKL8GL_tuPD8utqxk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

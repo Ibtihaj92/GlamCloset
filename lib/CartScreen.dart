@@ -9,8 +9,9 @@ import 'settings_page.dart';
 
 class CartScreen extends StatefulWidget {
   final List<Map<String, dynamic>> rentedItems;
+  final bool skipFirebase; // new flag
 
-  const CartScreen({super.key, this.rentedItems = const []});
+  const CartScreen({super.key, this.rentedItems = const [], this.skipFirebase = false});
 
   @override
   _CartScreenState createState() => _CartScreenState();
@@ -28,10 +29,15 @@ class _CartScreenState extends State<CartScreen> {
   void initState() {
     super.initState();
     cartItems = List<Map<String, dynamic>>.from(widget.rentedItems);
-    _loadUserCart();
+    if (!widget.skipFirebase) {
+      _loadUserCart();
+    }
   }
 
+
   void _loadUserCart() {
+    // Use the passed rentedItems directly
+    cartItems = List<Map<String, dynamic>>.from(widget.rentedItems);
     if (userId == null) return;
     final userCartRef = FirebaseDatabase.instance.ref('users/$userId/cart');
     userCartRef.onValue.listen((event) {

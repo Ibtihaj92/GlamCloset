@@ -122,9 +122,11 @@ class AdminDashboardPage extends StatelessWidget {
     required bool isDark,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
+    return Material(
+      borderRadius: BorderRadius.circular(20),
+      elevation: 4,
+      color: Colors.transparent,
+      child: Ink(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           gradient: isDark
@@ -146,26 +148,32 @@ class AdminDashboardPage extends StatelessWidget {
             ),
           ],
         ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 50,
-              color: isDark ? Colors.white : darkTextColor,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 50,
+                  color: isDark ? Colors.white : darkTextColor,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : darkTextColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : darkTextColor,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          ),
         ),
       ),
     );

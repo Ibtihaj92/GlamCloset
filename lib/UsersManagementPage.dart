@@ -2,25 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 class UsersManagementPage extends StatefulWidget {
+  /// Optional test data for widget testing (bypasses Firebase)
+  final List<Map<String, String>>? testUsers;
+
+  const UsersManagementPage({Key? key, this.testUsers}) : super(key: key);
 
   @override
   _UsersManagementPageState createState() => _UsersManagementPageState();
 }
 
 class _UsersManagementPageState extends State<UsersManagementPage> {
-  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref().child('users');
+  DatabaseReference? _dbRef;
   List<Map<String, String>> users = [];
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    fetchUsers();
+
+    // 👇 If test users are provided, skip Firebase
+    if (widget.testUsers != null) {
+      users = widget.testUsers!;
+      isLoading = false;
+    } else {
+      _dbRef = FirebaseDatabase.instance.ref().child('users');
+      fetchUsers();
+    }
   }
 
+  /// Fetch users from Firebase Realtime Database
   void fetchUsers() {
-    // Query only users with userType = "user"
-    _dbRef.orderByChild('userType').equalTo('user').onValue.listen((event) {
+    if (_dbRef == null) return; // Skip in test mode
+
+    _dbRef!.orderByChild('userType').equalTo('user').onValue.listen((event) {
       final data = event.snapshot.value;
       final List<Map<String, String>> loadedUsers = [];
 
@@ -41,21 +55,30 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
         isLoading = false;
       });
     });
-
   }
 
+  /// Delete a user (works for both test & real Firebase)
   void deleteUser(String userId) async {
-    await _dbRef.child(userId).remove();
+    if (widget.testUsers != null) {
+      // Test mode: just remove locally
+      setState(() {
+        users.removeWhere((user) => user['id'] == userId);
+      });
+      return;
+    }
+
+    // Real app: delete from Firebase
+    await _dbRef!.child(userId).remove();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Users Management"),
+        title: const Text("Users Management"),
         centerTitle: true,
         flexibleSpace: Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
               colors: [Colors.deepPurple, Colors.blueAccent],
               begin: Alignment.topLeft,
@@ -65,7 +88,7 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
         ),
       ),
       body: isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : users.isEmpty
           ? Center(
         child: Text(
@@ -83,24 +106,27 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
                   color: Colors.black12,
                   blurRadius: 6,
                   offset: Offset(0, 3),
-                )
+                ),
               ],
             ),
             child: ListTile(
-              contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
               leading: CircleAvatar(
                 backgroundColor: Colors.deepPurple.shade100,
-                child: Icon(Icons.person, color: Colors.deepPurple),
+                child:
+                const Icon(Icons.person, color: Colors.deepPurple),
               ),
               title: Text(
                 user["email"]!,
-                style: TextStyle(
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                   color: Colors.black87,
@@ -114,7 +140,7 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
                 ),
               ),
               trailing: IconButton(
-                icon: Icon(Icons.delete, color: Colors.redAccent),
+                icon: const Icon(Icons.delete, color: Colors.redAccent),
                 onPressed: () => deleteUser(user["id"]!),
               ),
             ),

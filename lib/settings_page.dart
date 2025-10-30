@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-
 import 'AccountDetails.dart';
 import 'ChatBotPage.dart';
 import 'WalletPage.dart';
@@ -10,13 +9,13 @@ import 'theme_notifier.dart';
 
 class SettingsPage extends StatefulWidget {
   final Widget? previousPage; // optional previous page
+  final bool? testIsAdmin; // for tests to bypass Firebase
 
-  const SettingsPage({super.key, this.previousPage});
+  const SettingsPage({super.key, this.previousPage, this.testIsAdmin});
 
   @override
   _SettingsPageState createState() => _SettingsPageState();
 }
-
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _notificationsEnabled = true;
@@ -25,7 +24,13 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    _loadUserType();
+
+    // Use testIsAdmin if provided (for widget tests)
+    if (widget.testIsAdmin != null) {
+      isAdmin = widget.testIsAdmin!;
+    } else {
+      _loadUserType();
+    }
   }
 
   // Fetch user type from Firebase
@@ -68,12 +73,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 MaterialPageRoute(builder: (context) => widget.previousPage!),
               );
             } else {
-              Navigator.pop(context); // default fallback
+              Navigator.pop(context);
             }
           },
         ),
       ),
-
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -129,8 +133,6 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           const SizedBox(height: 16),
-
-          // 🔹 Wallet (only if not admin)
           if (!isAdmin)
             _buildGradientTile(
               title: "Wallet",
@@ -144,7 +146,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               },
             ),
-
           const SizedBox(height: 16),
           _buildGradientTile(
             title: "Logout",

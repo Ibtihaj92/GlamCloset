@@ -7,7 +7,7 @@ import 'user_login.dart';
 import 'theme_notifier.dart';
 
 class AccountDetailsPage extends StatefulWidget {
-  final bool testIsLoading; // added for testing
+  final bool testIsLoading; // added for testing (skips Firebase)
 
   const AccountDetailsPage({super.key, this.testIsLoading = false});
 
@@ -28,7 +28,7 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
     if (!widget.testIsLoading) {
       fetchUserData();
     } else {
-      isLoading = false; // for tests, skip Firebase
+      isLoading = false; // skip Firebase in test mode
     }
   }
 
@@ -56,6 +56,12 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
   }
 
   Future<void> updateUserData() async {
+    // ✅ Skip Firebase in tests
+    if (widget.testIsLoading) {
+      print('🧪 Skipping Firebase update (test mode)');
+      return;
+    }
+
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -105,8 +111,10 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
         ),
         actions: [
           IconButton(
-            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode,
-                color: textColor),
+            icon: Icon(
+              isDark ? Icons.light_mode : Icons.dark_mode,
+              color: textColor,
+            ),
             onPressed: () => themeNotifier.toggleTheme(),
           ),
         ],
@@ -120,29 +128,33 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
             CircleAvatar(
               radius: 50,
               backgroundColor: Colors.pinkAccent.withOpacity(0.3),
-              child: Icon(Icons.person, size: 60, color: Colors.pinkAccent),
+              child: const Icon(Icons.person,
+                  size: 60, color: Colors.pinkAccent),
             ),
             const SizedBox(height: 30),
             _buildTextField(
-                controller: emailController,
-                label: 'E-mail',
-                textColor: textColor,
-                bgColor: fieldBgColor!,
-                borderColor: fieldBorderColor),
+              controller: emailController,
+              label: 'E-mail',
+              textColor: textColor,
+              bgColor: fieldBgColor!,
+              borderColor: fieldBorderColor,
+            ),
             const SizedBox(height: 20),
             _buildTextField(
-                controller: cityController,
-                label: 'City',
-                textColor: textColor,
-                bgColor: fieldBgColor,
-                borderColor: fieldBorderColor),
+              controller: cityController,
+              label: 'City',
+              textColor: textColor,
+              bgColor: fieldBgColor,
+              borderColor: fieldBorderColor,
+            ),
             const SizedBox(height: 20),
             _buildTextField(
-                controller: phoneController,
-                label: 'Phone Number',
-                textColor: textColor,
-                bgColor: fieldBgColor,
-                borderColor: fieldBorderColor),
+              controller: phoneController,
+              label: 'Phone Number',
+              textColor: textColor,
+              bgColor: fieldBgColor,
+              borderColor: fieldBorderColor,
+            ),
             const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,
@@ -151,7 +163,8 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30)),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                   backgroundColor:
                   isDark ? Colors.pinkAccent : Colors.purple,
                 ),
@@ -166,7 +179,9 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => ResetPasswordPage()),
+                  MaterialPageRoute(
+                    builder: (_) => ResetPasswordPage(),
+                  ),
                 );
               },
               child: Text(
@@ -181,11 +196,15 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
             const SizedBox(height: 40),
             TextButton.icon(
               onPressed: () {
-                FirebaseAuth.instance.signOut();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => LoginPage()),
-                );
+                if (!widget.testIsLoading) {
+                  FirebaseAuth.instance.signOut();
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => LoginPage()),
+                  );
+                } else {
+                  print('🧪 Skipping logout (test mode)');
+                }
               },
               icon: const Icon(Icons.logout, color: Colors.red),
               label: const Text(
@@ -199,12 +218,13 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
     );
   }
 
-  Widget _buildTextField(
-      {required TextEditingController controller,
-        required String label,
-        required Color textColor,
-        required Color bgColor,
-        required Color borderColor}) {
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required Color textColor,
+    required Color bgColor,
+    required Color borderColor,
+  }) {
     return TextField(
       controller: controller,
       style: TextStyle(color: textColor),
@@ -223,7 +243,7 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: Colors.pinkAccent),
+          borderSide: const BorderSide(color: Colors.pinkAccent),
         ),
       ),
     );

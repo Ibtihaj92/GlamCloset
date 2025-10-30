@@ -7,6 +7,10 @@ import 'user_login.dart';
 import 'database.dart';
 
 class UserRegister extends StatefulWidget {
+  final bool isTest;
+
+  const UserRegister({Key? key, this.isTest = false}) : super(key: key);
+
   @override
   _UserRegisterState createState() => _UserRegisterState();
 }

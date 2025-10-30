@@ -25,11 +25,12 @@ class DatabaseService {
         'city': city,
         'password': hashedPassword,
         'userType': userType,
+
       });
 
-      print("User data saved successfully!");
+      print("✅ User data saved successfully!");
     } catch (e) {
-      print("Error saving user data: $e");
+      print("❌ Error saving user data: $e");
     }
   }
 
@@ -41,11 +42,11 @@ class DatabaseService {
       if (snapshot.exists) {
         return Map<String, dynamic>.from(snapshot.value as Map);
       } else {
-        print("User data not found.");
+        print("⚠️ User data not found.");
         return null;
       }
     } catch (e) {
-      print("Error retrieving user data: $e");
+      print("❌ Error retrieving user data: $e");
       return null;
     }
   }
@@ -58,7 +59,7 @@ class DatabaseService {
       }
       return false;
     } catch (e) {
-      print("Error checking if user is admin: $e");
+      print("❌ Error checking if user is admin: $e");
       return false;
     }
   }
@@ -70,6 +71,7 @@ class DatabaseService {
     required String ageRange,
     required double price,
     required File imageFile,
+    required String occasion,
   }) async {
     try {
       final String fileName =
@@ -92,8 +94,8 @@ class DatabaseService {
         'price': price,
         'imageUrl': downloadUrl,
         'createdAt': DateTime.now().toIso8601String(),
-        'rentedCount': 0,
         'ownerId': currentUserId,
+        'occasion': occasion,
       });
 
       print('✅ Dress data saved successfully!');
@@ -103,28 +105,41 @@ class DatabaseService {
     }
   }
 
-  // ------------------- Increment Rented Count -------------------
-  Future<void> incrementRentedCount(String dressId) async {
+  // ------------------- Update Dress Data -------------------
+  Future<void> updateDressData({
+    required String dressId,
+    String? dressName,
+    String? size,
+    String? ageRange,
+    double? price,
+    String? occasion,
+    File? newImageFile,
+  }) async {
     try {
-      final dressRef = _database.child('rented_clothes/$dressId/rentedCount');
+      final dressRef = _database.child('rented_clothes/$dressId');
+      final Map<String, dynamic> updates = {};
 
-      await dressRef.runTransaction((currentData) {
-        int currentCount = 0;
+      if (dressName != null) updates['name'] = dressName;
+      if (size != null) updates['size'] = size;
+      if (ageRange != null) updates['ageRange'] = ageRange;
+      if (price != null) updates['price'] = price;
+      if (occasion != null) updates['occasion'] = occasion;
 
-        if (currentData != null) {
-          if (currentData is int) {
-            currentCount = currentData;
-          } else if (currentData is String) {
-            currentCount = int.tryParse(currentData) ?? 0;
-          }
-        }
+      if (newImageFile != null) {
+        final String fileName =
+            '${DateTime.now().millisecondsSinceEpoch}_${dressName ?? 'dress'}.jpg';
+        final Reference ref =
+        _storage.ref().child('rented_clothes/$fileName');
+        final UploadTask uploadTask = ref.putFile(newImageFile);
+        final TaskSnapshot snapshot = await uploadTask.whenComplete(() {});
+        final String newImageUrl = await snapshot.ref.getDownloadURL();
+        updates['imageUrl'] = newImageUrl;
+      }
 
-        return Transaction.success(currentCount + 1);
-      });
-
-      print('✅ Rented count incremented for $dressId');
+      await dressRef.update(updates);
+      print('✅ Dress data updated successfully!');
     } catch (e) {
-      print('❌ Error incrementing rented count: $e');
+      print('❌ Error updating dress data: $e');
     }
   }
 
@@ -147,13 +162,7 @@ class DatabaseService {
     required List<Map<String, dynamic>> cartItems,
   }) async {
     try {
-      // 1. Increment rented count for each dress
-      for (var item in cartItems) {
-        final dressId = item['id'] as String;
-        await incrementRentedCount(dressId);
-      }
-
-      // 2. Clear the user's cart
+      // 1. Just clear the user's cart (no rented count logic anymore)
       await _database.child('users/$userId/cart').remove();
       print('✅ Payment complete and cart cleared!');
     } catch (e) {

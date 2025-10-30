@@ -8,7 +8,7 @@ import 'CartScreen.dart';
 import 'settings_page.dart';
 import 'theme_notifier.dart';
 import 'AccountDetails.dart';
-import 'HomePage.dart' as homePageFile;
+
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -17,7 +17,7 @@ class CustomerHomeScreen extends StatefulWidget {
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
-class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProviderStateMixin {
   int _currentIndex = 1;
 
   List<Map<String, dynamic>> allDresses = [];
@@ -25,9 +25,14 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Set<String> cartDressIds = {};
   final userId = FirebaseAuth.instance.currentUser?.uid;
 
+  late TabController _tabController;
+
+  final List<String> tabs = ['All', 'Eid', 'Wedding', 'Party'];
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: tabs.length, vsync: this);
     _loadClothesFromFirebase();
     _loadUserCart();
     _loadUserWishlist();
@@ -43,7 +48,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       if (data != null) {
         final filteredData = data.entries.where((e) {
           final cloth = Map<String, dynamic>.from(e.value);
-          // Only show available dresses that are not owned by current user
           return cloth['available'] == true && cloth['ownerId'] != currentUserId;
         }).map((e) {
           final cloth = Map<String, dynamic>.from(e.value);
@@ -54,6 +58,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             'price': cloth['price']?.toString() ?? '0',
             'imageBase64': cloth['imageBase64'] ?? '',
             'rentedCount': cloth['rentedCount'] ?? 0,
+            'category': cloth['occasion'] ?? 'All', // 🔹 use occasion
           };
         }).toList();
 
@@ -65,9 +70,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       }
     });
   }
-
-
-
 
   void _loadUserCart() {
     if (userId == null) return;
@@ -124,10 +126,13 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         ),
       );
     } else if (index == 1) {
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => homePageFile.HomePage()),
+        MaterialPageRoute(
+          builder: (context) => SettingsPage(previousPage: CustomerHomeScreen()),
+        ),
       );
+
     } else if (index == 2) {
       Navigator.pushReplacement(
         context,
@@ -228,7 +233,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     });
   }
 
-  // 🔹 Full-screen image popup
   void _showFullImage(String? base64Image) {
     if (base64Image == null || base64Image.isEmpty) return;
 
@@ -237,7 +241,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         child: GestureDetector(
-          onTap: () => Navigator.pop(context), // tap to close
+          onTap: () => Navigator.pop(context),
           child: InteractiveViewer(
             child: Image.memory(
               base64Decode(base64Image),
@@ -380,53 +384,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  // Trending Now Section
-  Widget _buildTrendingNowSection(bool isDark) {
-    // Sort by current rentedCount dynamically
-    final trendingDresses = List<Map<String, dynamic>>.from(allDresses)
-      ..sort((a, b) => (b['rentedCount'] ?? 0).compareTo(a['rentedCount'] ?? 0));
 
-    final topTrending = trendingDresses.take(6).toList();
-    if (topTrending.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            '🔥 Trending Now',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 230,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: topTrending.length,
-            itemBuilder: (context, index) {
-              final item = topTrending[index];
-              final isFavorite = favoriteDressIds.contains(item['id']);
-              final cardGradient = isDark
-                  ? [Colors.deepPurple.shade700, Colors.blueGrey.shade600]
-                  : [Colors.pink.shade300, Colors.purple.shade400];
-
-              return _buildTrendingDressCard(item, cardGradient, isFavorite, isDark);
-            },
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-
-// Trending dress card
   Widget _buildTrendingDressCard(
       Map<String, dynamic> item,
       List<Color> cardGradient,
@@ -556,7 +515,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final themeNotifier = Provider.of<ThemeNotifier>(context);
@@ -577,6 +535,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             onPressed: _openWishlistScreen,
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: tabs.map((t) => Tab(text: t)).toList(),
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -635,28 +598,39 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
             ),
 
-            // Dresses List with Trending
+            // TabBar view with filtered dresses
             Expanded(
-              child: allDresses.isEmpty
-                  ? Center(
-                child: Text(
-                  'No dresses available yet 👗',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: isDark ? Colors.white70 : Colors.black54,
-                  ),
-                ),
-              )
-                  : ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _buildTrendingNowSection(isDark),
-                  ...allDresses.map(
-                        (item) => _buildDressCard(item, cardGradient, isDark),
-                  ),
-                ],
+              child: TabBarView(
+                controller: _tabController,
+                children: tabs.map((category) {
+                  final dressesToShow = category == 'All'
+                      ? allDresses
+                      : allDresses.where((d) => d['category'] == category).toList();
+
+                  if (dressesToShow.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No dresses for $category ',
+                        style: TextStyle(
+                            fontSize: 16,
+                            color: isDark ? Colors.white70 : Colors.black54),
+                      ),
+                    );
+                  }
+
+                  return ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    children: [
+                      ...dressesToShow.map(
+                            (item) => _buildDressCard(item, cardGradient, isDark),
+                      ),
+                    ],
+                  );
+
+                }).toList(),
               ),
             ),
+
           ],
         ),
       ),

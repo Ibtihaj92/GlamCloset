@@ -7,7 +7,9 @@ import 'user_login.dart';
 import 'theme_notifier.dart';
 
 class AccountDetailsPage extends StatefulWidget {
-  const AccountDetailsPage({super.key});
+  final bool testIsLoading; // added for testing
+
+  const AccountDetailsPage({super.key, this.testIsLoading = false});
 
   @override
   State<AccountDetailsPage> createState() => _AccountDetailsPageState();
@@ -23,7 +25,11 @@ class _AccountDetailsPageState extends State<AccountDetailsPage> {
   @override
   void initState() {
     super.initState();
-    fetchUserData();
+    if (!widget.testIsLoading) {
+      fetchUserData();
+    } else {
+      isLoading = false; // for tests, skip Firebase
+    }
   }
 
   Future<void> fetchUserData() async {

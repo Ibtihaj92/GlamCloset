@@ -9,11 +9,14 @@ import 'WalletPage.dart';
 import 'theme_notifier.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final Widget? previousPage; // optional previous page
+
+  const SettingsPage({super.key, this.previousPage});
 
   @override
   _SettingsPageState createState() => _SettingsPageState();
 }
+
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _notificationsEnabled = true;
@@ -54,19 +57,23 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: BackButton(color: isDark ? Colors.white : Colors.black),
-        title: Text(
-          'Settings',
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        title: const Text('Settings'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (widget.previousPage != null) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => widget.previousPage!),
+              );
+            } else {
+              Navigator.pop(context); // default fallback
+            }
+          },
         ),
       ),
+
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

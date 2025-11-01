@@ -4,8 +4,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'CartScreen.dart';
 import 'settings_page.dart';
 import 'theme_notifier.dart';
@@ -31,6 +29,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
 
   final List<String> tabs = ['All', 'Eid', 'Wedding', 'Party'];
 
+  Map<String, int> selectedQuantities = {}; // 🔹 الكميات المختارة لكل قطعة
+
   @override
   void initState() {
     super.initState();
@@ -42,51 +42,41 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
 
   void _loadClothesFromFirebase() {
     final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final ref = FirebaseDatabase.instance.ref('rented_clothes');
 
+    DatabaseReference ref = FirebaseDatabase.instance.ref('rented_clothes');
     ref.onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
-      if (data == null) {
-        setState(() => allDresses = []);
-        return;
-      }
 
-      final List<Map<String, dynamic>> loaded = [];
+      if (data != null) {
+        final filteredData = data.entries.where((e) {
+          final cloth = Map<String, dynamic>.from(e.value);
+          return cloth['available'] == true && cloth['ownerId'] != currentUserId;
+        }).map((e) {
+          final cloth = Map<String, dynamic>.from(e.value);
+          return {
+            'id': cloth['id'] ?? '',
+            'title': cloth['name'] ?? 'Unknown',
+            'age': cloth['ageRange'] ?? 'N/A',
+            'price': cloth['price']?.toString() ?? '0',
+            'imageBase64': cloth['imageBase64'] ?? '',
+            'rentedCount': cloth['rentedCount'] ?? 0,
+            'category': cloth['occasion'] ?? 'All', // 🔹 use occasion
+            'quantity': cloth['quantity'] ?? 1, // 🔹 عدد القطع المتاحة
+          };
+        }).toList();
 
-      data.forEach((key, value) {
-        final cloth = Map<String, dynamic>.from(value);
-
-        // skip dresses uploaded by current user
-        if (cloth['userId'] == currentUserId) return;
-
-        // Skip hidden dresses
-        if (cloth['visible'] == false) return;
-
-
-        // parse availableCount safely (handle strings / nulls)
-        final available = int.tryParse(cloth['availableCount']?.toString() ?? '')
-            ?? int.tryParse(cloth['quantity']?.toString() ?? '')
-            ?? 0;
-
-        loaded.add({
-          // IMPORTANT: use the DB child key as the id so updates by key match reads
-          'id': cloth['id'] ?? key.toString(),
-          'title': cloth['name'] ?? 'Unknown',
-          'age': cloth['ageRange'] ?? 'N/A',
-          'price': cloth['price']?.toString() ?? '0',
-          'imageBase64': cloth['imageBase64'] ?? '',
-          'rentedCount': cloth['rentedCount'] ?? 0,
-          'category': cloth['occasion'] ?? 'All',
-          'availableCount': available,
+        setState(() {
+          allDresses = filteredData;
+          // Initialize selectedQuantities
+          for (var item in filteredData) {
+            selectedQuantities[item['id']] = 1;
+          }
         });
-      });
-
-      setState(() => allDresses = loaded);
+      } else {
+        setState(() => allDresses = []);
+      }
     });
   }
-
-
-
 
   void _loadUserCart() {
     if (userId == null) return;
@@ -234,85 +224,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
     }
   }
 
-  void _toggleCart(Map<String, dynamic> item) async {
+  void _toggleCart(Map<String, dynamic> item) {
     if (userId == null) return;
-
     final cartRef = FirebaseDatabase.instance.ref('users/$userId/cart/${item['id']}');
-    final dressRef = FirebaseDatabase.instance.ref('rented_clothes/${item['id']}');
 
-    try {
-      // 1. Get current cart quantity
-      final cartSnapshot = await cartRef.get();
-      int currentCountInCart = 0;
-      if (cartSnapshot.exists) {
-        final existing = Map<String, dynamic>.from(cartSnapshot.value as Map);
-        currentCountInCart =
-            int.tryParse(existing['quantity']?.toString() ?? '1') ?? 1;
-      }
-
-      // 2. Get available count from Firebase
-      final dressSnapshot = await dressRef.get();
-      int availableCount = 0;
-      if (dressSnapshot.exists) {
-        final data = Map<String, dynamic>.from(dressSnapshot.value as Map);
-        availableCount = int.tryParse(data['availableCount']?.toString() ??
-            data['quantity']?.toString() ??
-            '0') ??
-            0;
-      }
-
-      // 3. Check if adding exceeds available
-      if (currentCountInCart + 1 > availableCount) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Cannot add more. Only $availableCount available for ${item['title']}.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      // 4. Add to cart
-      int newCount = currentCountInCart + 1;
-      await cartRef.set({
-        'id': item['id'],
-        'title': item['title'],
-        'age': item['age'],
-        'price': item['price'],
-        'quantity': newCount,
-        'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
-            ? 'data:image/png;base64,${item['imageBase64']}'
-            : null,
-      });
-
-      setState(() {
-        cartDressIds.add(item['id']);
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${item['title']} added to cart (x$newCount).'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      print('❌ Error adding to cart: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error adding to cart.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    if (cartDressIds.contains(item['id'])) return;
+    cartRef.set({
+      'id': item['id'],
+      'title': item['title'],
+      'age': item['age'],
+      'price': item['price'],
+      'quantity': selectedQuantities[item['id']] ?? 1, // 🔹 إضافة الكمية
+      'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
+          ? 'data:image/png;base64,${item['imageBase64']}'
+          : null,
+    });
   }
-
-
-
-
-
-
-
 
   void _showFullImage(String? base64Image) {
     if (base64Image == null || base64Image.isEmpty) return;
@@ -337,6 +264,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
   Widget _buildDressCard(Map<String, dynamic> item, List<Color> cardGradient, bool isDark,
       {VoidCallback? onFavoriteToggle}) {
     final isFavorite = favoriteDressIds.contains(item['id']);
+    final id = item['id'];
+    final maxQty = item['quantity'] ?? 1;
+    final currentQty = selectedQuantities[id] ?? 1;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -383,12 +313,55 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
                     fontSize: 14),
               ),
               subtitle: Text(
-                   'Age: ${item['age']} | Available: ${item['availableCount']}',
-
+                'Age: ${item['age']} | Qty: $currentQty', // 🔹 إضافة الكمية هنا
+                style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54, fontSize: 12),
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Increment / Decrement buttons
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: currentQty > 1
+                            ? () {
+                          setState(() {
+                            selectedQuantities[id] = currentQty - 1;
+                          });
+                        }
+                            : null,
+                        child: Icon(
+                          Icons.remove,
+                          size: 18,
+                          color: currentQty > 1 ? Colors.white : Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$currentQty',
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: currentQty < maxQty
+                            ? () {
+                          setState(() {
+                            selectedQuantities[id] = currentQty + 1;
+                          });
+                        }
+                            : null,
+                        child: Icon(
+                          Icons.add,
+                          size: 18,
+                          color: currentQty < maxQty ? Colors.white : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(width: 8),
+
                   IconButton(
                     icon: Icon(
                       isFavorite ? Icons.favorite : Icons.favorite_border,
@@ -399,58 +372,36 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
                       _toggleWishlist(item);
                     },
                   ),
-                  const SizedBox(width: 2),
                   IconButton(
                     icon: const Icon(Icons.share, color: Colors.white, size: 20),
-                    onPressed: () async {
-                      try {
-                        // 1️⃣ Convert base64 image to bytes
-                        final imageBytes = base64Decode(item['imageBase64']);
-
-                        // 2️⃣ Get temporary directory
-                        final tempDir = await getTemporaryDirectory();
-                        final file = await File('${tempDir.path}/${item['id']}.png').create();
-                        await file.writeAsBytes(imageBytes);
-
-                        // 3️⃣ Share text + image file
-                        await Share.shareXFiles(
-                          [XFile(file.path)],
-                          text: '👗 Check out this Omani outfit on GlamCloset!\n'
-                              '✨ ${item['title']} - ${item['price']} OMR\n\n'
-                              'Rent it now on GlamCloset App! 💫',
-                          subject: 'GlamCloset Outfit',
-                        );
-                      } catch (e) {
-                        print('❌ Error sharing: $e');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Error sharing this dress.')),
-                        );
-                      }
+                    onPressed: () {
+                      Share.share(
+                        '👗 Check out this Omani outfit on GlamCloset!\n'
+                            '✨ ${item['title']} - ${item['price']} OMR\n\n'
+                            'Rent it now on GlamCloset App! 💫',
+                        subject: 'GlamCloset Outfit',
+                      );
                     },
                   ),
-
                   ElevatedButton(
-                    onPressed: (item['availableCount'] ?? 0) == 0
-                        ? null // disable button
-                        : () {
+                    onPressed: () {
                       _toggleCart(item);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${item['title']} added to cart')),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: (item['availableCount'] ?? 0) == 0
-                          ? Colors.grey
-                          : Colors.white,
-                      foregroundColor: (item['availableCount'] ?? 0) == 0
-                          ? Colors.white
-                          : cardGradient[0],
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      backgroundColor: Colors.white,
+                      foregroundColor: cardGradient[0],
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(24),
                       ),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
-                    child: Text((item['availableCount'] ?? 0) == 0 ? 'Sold Out' : 'Rent'),
+                    child: const Text('Rent'),
                   ),
-
                 ],
               ),
             ),
@@ -486,134 +437,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
     );
   }
 
-  Widget _buildTrendingDressCard(
-      Map<String, dynamic> item,
-      List<Color> cardGradient,
-      bool isFavorite,
-      bool isDark,
-      ) {
-    return Container(
-      width: 180,
-      margin: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(
-          colors: cardGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            flex: 5,
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-                  child: GestureDetector(
-                    onTap: () => _showFullImage(item['imageBase64']),
-                    child: item['imageBase64'] != null && item['imageBase64'].isNotEmpty
-                        ? Image.memory(
-                      base64Decode(item['imageBase64']),
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    )
-                        : Image.asset(
-                      'images/default.png',
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${item['price']} OMR',
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 5,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    item['title'],
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
-                      fontSize: 13,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    'Age: ${item['age']} }',
-                    style: TextStyle(
-                        fontSize: 11, color: isDark ? Colors.white70 : Colors.grey[800]),
-                  ),
-                  Text(
-                    '${item['rentedCount'] ?? 0} rented',
-                    style: const TextStyle(fontSize: 11, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 4),
-                  FittedBox(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          onPressed: () => _toggleWishlist(item),
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            _toggleCart(item);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${item['title']} added to cart')),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: cardGradient[0],
-                            padding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            textStyle: const TextStyle(fontSize: 12),
-                          ),
-                          child: const Text('Rent'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // يمكنك تطبيق نفس العدّاد على _buildTrendingDressCard إذا أردت
 
   @override
   Widget build(BuildContext context) {

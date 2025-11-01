@@ -15,6 +15,7 @@ class RentedCloth {
   final String ageRange;
   final double price;
   final String userId;
+  final int quantity;
 
   RentedCloth({
     required this.id,
@@ -23,6 +24,7 @@ class RentedCloth {
     required this.ageRange,
     required this.price,
     required this.userId,
+    required this.quantity,
   });
 }
 
@@ -62,6 +64,7 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
               price: double.tryParse(value['price'].toString()) ?? 0,
               imageBase64: value['imageBase64'] ?? '',
               userId: value['userId'] ?? '',
+              quantity: int.tryParse(value['quantity']?.toString() ?? '0') ?? 0,
             ));
           }
         });
@@ -160,7 +163,7 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
                         fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
                   ),
                   subtitle: Text(
-                    'Age: ${cloth.ageRange}',
+                    'Age: ${cloth.ageRange}\nQuantity: ${cloth.quantity}',
                     style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   trailing: Row(
@@ -208,9 +211,6 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
             ],
           );
         },
-
-
-
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToAddScreen,
@@ -257,9 +257,13 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController sizeController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
+  final TextEditingController quantityController = TextEditingController();
   File? _pickedImage;
   bool _imageError = false;
   final _auth = FirebaseAuth.instance;
+  String? selectedOccasion;
+  final List<String> occasions = ['Wedding', 'Eid', 'Party', 'All'];
+
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -290,14 +294,19 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
       'ageRange': sizeController.text.trim(),
       'price': double.parse(priceController.text),
       'imageBase64': base64Image,
-      'userId': user.uid, // 🔥 Track owner
+      'userId': user.uid,
+      'quantity': int.parse(quantityController.text),
+    'available': int.parse(quantityController.text) > 0,
+      'occasion': selectedOccasion,
     };
 
     await FirebaseDatabase.instance
         .ref('rented_clothes/${newCloth['id']}')
         .set(newCloth);
+
     Navigator.pop(context);
   }
+
 
   Widget _buildTextField(String label, TextEditingController controller,
       {TextInputType keyboardType = TextInputType.text}) {
@@ -308,15 +317,8 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
       controller: controller,
       keyboardType: keyboardType,
       style: TextStyle(color: textColor),
-      validator: (value) {
-        if (value == null || value.trim().isEmpty)
-          return '$label cannot be empty';
-        if (label == "Price") {
-          final price = double.tryParse(value);
-          if (price == null || price <= 0) return 'Enter a valid price';
-        }
-        return null;
-      },
+      validator: (value) => validateField(label, value ?? ''),
+
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: textColor),
@@ -325,6 +327,42 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+  }
+  /// ------------------- Shared Validator -------------------
+  String? validateField(String label, String value) {
+    if (value.trim().isEmpty) return '$label cannot be empty';
+
+    if (label == "Name of the cloth") {
+      if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
+        return 'Name must contain only letters';
+      }
+    }
+    if (label == "Size (Age Range)") {
+      // Accept single number
+      if (RegExp(r'^\d+$').hasMatch(value)) {
+        final numValue = int.parse(value);
+        if (numValue <= 0) return 'Size must be greater than 0';
+      }
+      // Accept range like 3-9
+      else if (RegExp(r'^\d+-\d+$').hasMatch(value)) {
+        final parts = value.split('-');
+        final start = int.parse(parts[0]);
+        final end = int.parse(parts[1]);
+        if (start <= 0 || end <= 0) return 'Size numbers must be greater than 0';
+        if (start >= end) return 'Start of range must be less than end';
+      }
+      else {
+        return 'Size must be a number or range like 3-9';
+      }
+    }
+
+    if (label == "Price"|| label == "Quantity") {
+      final numValue = double.tryParse(value);
+      if (numValue == null) return '$label must be a number';
+      if (numValue <= 0) return '$label must be greater than 0';
+    }
+
+    return null;
   }
 
   @override
@@ -362,6 +400,35 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
                 const SizedBox(height: 16),
                 _buildTextField("Price", priceController,
                     keyboardType: TextInputType.number),
+                const SizedBox(height: 16),
+                _buildTextField("Quantity", quantityController,
+                    keyboardType: TextInputType.number),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedOccasion,
+                  dropdownColor: isDark ? Colors.grey[800] : Colors.white,
+                  decoration: InputDecoration(
+                    labelText: "Occasion",
+                    filled: true,
+                    fillColor: inputColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: occasions.map((occasion) {
+                    return DropdownMenuItem(
+                      value: occasion,
+                      child: Text(occasion, style: TextStyle(color: textColor)),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedOccasion = value;
+                    });
+                  },
+                  validator: (value) =>
+                  value == null ? 'Please select an occasion' : null,
+                ),
+
+
                 const SizedBox(height: 16),
                 Text("Pick Image", style: TextStyle(color: textColor)),
                 const SizedBox(height: 8),
@@ -422,6 +489,7 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
   late TextEditingController nameController;
   late TextEditingController sizeController;
   late TextEditingController priceController;
+  late TextEditingController quantityController;
   File? _pickedImage;
 
   @override
@@ -430,6 +498,7 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
     nameController = TextEditingController(text: widget.cloth.name);
     sizeController = TextEditingController(text: widget.cloth.ageRange);
     priceController = TextEditingController(text: widget.cloth.price.toString());
+    quantityController = TextEditingController(text: widget.cloth.quantity.toString());
   }
 
   Future<void> _pickImage() async {
@@ -458,6 +527,7 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
       'price': double.parse(priceController.text),
       'imageBase64': base64Image,
       'userId': widget.cloth.userId,
+      'quantity': int.parse(quantityController.text),
     };
 
     await FirebaseDatabase.instance
@@ -478,10 +548,38 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
       validator: (value) {
         if (value == null || value.trim().isEmpty)
           return '$label cannot be empty';
-        if (label == "Price") {
-          final price = double.tryParse(value);
-          if (price == null || price <= 0) return 'Enter a valid price';
+        if (label == "Name of the cloth") {
+          if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
+            return 'Name must contain only letters';
+          }
         }
+        if (label == "Size (Age Range)") {
+          // Accept single number
+          if (RegExp(r'^\d+$').hasMatch(value)) {
+            final numValue = int.parse(value);
+            if (numValue <= 0) return 'Size must be greater than 0';
+          }
+          // Accept range like 3-9
+          else if (RegExp(r'^\d+-\d+$').hasMatch(value)) {
+            final parts = value.split('-');
+            final start = int.parse(parts[0]);
+            final end = int.parse(parts[1]);
+            if (start <= 0 || end <= 0) return 'Size numbers must be greater than 0';
+            if (start >= end) return 'Start of range must be less than end';
+          }
+          else {
+            return 'Size must be a number or range like 3-9';
+          }
+        }
+
+
+        if ( label == "Price" || label == "Quantity") {
+          final numValue = double.tryParse(value);
+          if (numValue == null) return '$label must be a number';
+          if (numValue <= 0) return '$label must be greater than 0';
+        }
+
+
         return null;
       },
       decoration: InputDecoration(
@@ -528,6 +626,9 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
                 _buildTextField("Size (Age Range)", sizeController),
                 const SizedBox(height: 16),
                 _buildTextField("Price", priceController,
+                    keyboardType: TextInputType.number),
+                const SizedBox(height: 16),
+                _buildTextField("Quantity", quantityController,
                     keyboardType: TextInputType.number),
                 const SizedBox(height: 16),
                 Text("Pick Image", style: TextStyle(color: textColor)),

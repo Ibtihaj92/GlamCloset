@@ -73,7 +73,7 @@ class AdminOrdersPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: cardColor,
         iconTheme: IconThemeData(color: textColor),
-        title: Text("Admin Orders", style: TextStyle(color: textColor)),
+        title: Text(" Orders", style: TextStyle(color: textColor)),
         centerTitle: true,
         elevation: 1,
       ),

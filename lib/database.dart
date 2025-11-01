@@ -72,6 +72,7 @@ class DatabaseService {
     required double price,
     required File imageFile,
     required String occasion,
+    required int availableCount,
   }) async {
     try {
       final String fileName =
@@ -96,6 +97,12 @@ class DatabaseService {
         'createdAt': DateTime.now().toIso8601String(),
         'ownerId': currentUserId,
         'occasion': occasion,
+        'availableCount': availableCount,
+        'totalCount': availableCount,
+        'available': availableCount > 0,
+        'isVisible': true,
+
+
       });
 
       print('✅ Dress data saved successfully!');
@@ -114,6 +121,7 @@ class DatabaseService {
     double? price,
     String? occasion,
     File? newImageFile,
+    int ? availableCount
   }) async {
     try {
       final dressRef = _database.child('rented_clothes/$dressId');
@@ -124,6 +132,7 @@ class DatabaseService {
       if (ageRange != null) updates['ageRange'] = ageRange;
       if (price != null) updates['price'] = price;
       if (occasion != null) updates['occasion'] = occasion;
+      if (availableCount != null) updates['availableCount'] = availableCount;
 
       if (newImageFile != null) {
         final String fileName =
@@ -135,6 +144,8 @@ class DatabaseService {
         final String newImageUrl = await snapshot.ref.getDownloadURL();
         updates['imageUrl'] = newImageUrl;
       }
+
+
 
       await dressRef.update(updates);
       print('✅ Dress data updated successfully!');
@@ -156,17 +167,59 @@ class DatabaseService {
     }
   }
 
+
   // ------------------- Complete Payment -------------------
   Future<void> completePayment({
     required String userId,
     required List<Map<String, dynamic>> cartItems,
   }) async {
+    final DatabaseReference rentedRef =
+    FirebaseDatabase.instance.ref('rented_clothes');
+    final DatabaseReference userCartRef =
+    FirebaseDatabase.instance.ref('users/$userId/cart');
+
     try {
-      // 1. Just clear the user's cart (no rented count logic anymore)
-      await _database.child('users/$userId/cart').remove();
-      print('✅ Payment complete and cart cleared!');
+      for (var item in cartItems) {
+        final clothId = item['id'];
+        final quantity = (item['quantity'] is int)
+            ? item['quantity']
+            : int.tryParse(item['quantity'].toString()) ?? 1;
+
+        if (clothId == null) continue;
+
+        final clothSnapshot = await rentedRef.child(clothId).get();
+        if (clothSnapshot.exists) {
+          final clothData =
+          Map<String, dynamic>.from(clothSnapshot.value as Map);
+
+          int availableCount =
+              clothData['availableCount'] ?? clothData['totalCount'] ?? 0;
+
+          if (availableCount > 0) {
+            final newAvailableCount = availableCount - quantity;
+
+            await rentedRef.child(clothId).update({
+              'availableCount': newAvailableCount < 0 ? 0 : newAvailableCount,
+              'available': newAvailableCount > 0,
+            });
+
+            print(
+                '🟢 Updated $clothId: availableCount = $newAvailableCount (rented $quantity)');
+          } else {
+            print('⚠️ $clothId is already out of stock.');
+          }
+        } else {
+          print('⚠️ Cloth ID $clothId not found in rented_clothes.');
+        }
+      }
+
+      // ✅ Finally, clear the user's cart after payment
+      await userCartRef.remove();
+      print('✅ Payment complete, cart cleared, and stock updated!');
     } catch (e) {
       print('❌ Error during payment processing: $e');
     }
   }
 }
+
+

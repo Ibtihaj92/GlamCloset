@@ -4,6 +4,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'CartScreen.dart';
 import 'settings_page.dart';
 import 'theme_notifier.dart';
@@ -40,36 +42,51 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
 
   void _loadClothesFromFirebase() {
     final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final ref = FirebaseDatabase.instance.ref('rented_clothes');
 
-    DatabaseReference ref = FirebaseDatabase.instance.ref('rented_clothes');
     ref.onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
-
-      if (data != null) {
-        final filteredData = data.entries.where((e) {
-          final cloth = Map<String, dynamic>.from(e.value);
-          return cloth['available'] == true && cloth['ownerId'] != currentUserId;
-        }).map((e) {
-          final cloth = Map<String, dynamic>.from(e.value);
-          return {
-            'id': cloth['id'] ?? '',
-            'title': cloth['name'] ?? 'Unknown',
-            'age': cloth['ageRange'] ?? 'N/A',
-            'price': cloth['price']?.toString() ?? '0',
-            'imageBase64': cloth['imageBase64'] ?? '',
-            'rentedCount': cloth['rentedCount'] ?? 0,
-            'category': cloth['occasion'] ?? 'All', // 🔹 use occasion
-          };
-        }).toList();
-
-        setState(() {
-          allDresses = filteredData;
-        });
-      } else {
+      if (data == null) {
         setState(() => allDresses = []);
+        return;
       }
+
+      final List<Map<String, dynamic>> loaded = [];
+
+      data.forEach((key, value) {
+        final cloth = Map<String, dynamic>.from(value);
+
+        // skip dresses uploaded by current user
+        if (cloth['userId'] == currentUserId) return;
+
+        // Skip hidden dresses
+        if (cloth['visible'] == false) return;
+
+
+        // parse availableCount safely (handle strings / nulls)
+        final available = int.tryParse(cloth['availableCount']?.toString() ?? '')
+            ?? int.tryParse(cloth['quantity']?.toString() ?? '')
+            ?? 0;
+
+        loaded.add({
+          // IMPORTANT: use the DB child key as the id so updates by key match reads
+          'id': cloth['id'] ?? key.toString(),
+          'title': cloth['name'] ?? 'Unknown',
+          'age': cloth['ageRange'] ?? 'N/A',
+          'price': cloth['price']?.toString() ?? '0',
+          'imageBase64': cloth['imageBase64'] ?? '',
+          'rentedCount': cloth['rentedCount'] ?? 0,
+          'category': cloth['occasion'] ?? 'All',
+          'availableCount': available,
+        });
+      });
+
+      setState(() => allDresses = loaded);
     });
   }
+
+
+
 
   void _loadUserCart() {
     if (userId == null) return;
@@ -217,21 +234,85 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
     }
   }
 
-  void _toggleCart(Map<String, dynamic> item) {
+  void _toggleCart(Map<String, dynamic> item) async {
     if (userId == null) return;
-    final cartRef = FirebaseDatabase.instance.ref('users/$userId/cart/${item['id']}');
 
-    if (cartDressIds.contains(item['id'])) return;
-    cartRef.set({
-      'id': item['id'],
-      'title': item['title'],
-      'age': item['age'],
-      'price': item['price'],
-      'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
-          ? 'data:image/png;base64,${item['imageBase64']}'
-          : null,
-    });
+    final cartRef = FirebaseDatabase.instance.ref('users/$userId/cart/${item['id']}');
+    final dressRef = FirebaseDatabase.instance.ref('rented_clothes/${item['id']}');
+
+    try {
+      // 1. Get current cart quantity
+      final cartSnapshot = await cartRef.get();
+      int currentCountInCart = 0;
+      if (cartSnapshot.exists) {
+        final existing = Map<String, dynamic>.from(cartSnapshot.value as Map);
+        currentCountInCart =
+            int.tryParse(existing['quantity']?.toString() ?? '1') ?? 1;
+      }
+
+      // 2. Get available count from Firebase
+      final dressSnapshot = await dressRef.get();
+      int availableCount = 0;
+      if (dressSnapshot.exists) {
+        final data = Map<String, dynamic>.from(dressSnapshot.value as Map);
+        availableCount = int.tryParse(data['availableCount']?.toString() ??
+            data['quantity']?.toString() ??
+            '0') ??
+            0;
+      }
+
+      // 3. Check if adding exceeds available
+      if (currentCountInCart + 1 > availableCount) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Cannot add more. Only $availableCount available for ${item['title']}.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // 4. Add to cart
+      int newCount = currentCountInCart + 1;
+      await cartRef.set({
+        'id': item['id'],
+        'title': item['title'],
+        'age': item['age'],
+        'price': item['price'],
+        'quantity': newCount,
+        'image': item['imageBase64'] != null && item['imageBase64'].isNotEmpty
+            ? 'data:image/png;base64,${item['imageBase64']}'
+            : null,
+      });
+
+      setState(() {
+        cartDressIds.add(item['id']);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${item['title']} added to cart (x$newCount).'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('❌ Error adding to cart: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error adding to cart.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
+
+
+
+
+
+
+
 
   void _showFullImage(String? base64Image) {
     if (base64Image == null || base64Image.isEmpty) return;
@@ -302,9 +383,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
                     fontSize: 14),
               ),
               subtitle: Text(
-                'Age: ${item['age']}',
-                style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black54, fontSize: 12),
+                   'Age: ${item['age']} | Available: ${item['availableCount']}',
+
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -319,36 +399,58 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
                       _toggleWishlist(item);
                     },
                   ),
+                  const SizedBox(width: 2),
                   IconButton(
                     icon: const Icon(Icons.share, color: Colors.white, size: 20),
-                    onPressed: () {
-                      Share.share(
-                        '👗 Check out this Omani outfit on GlamCloset!\n'
-                            '✨ ${item['title']} - ${item['price']} OMR\n\n'
-                            'Rent it now on GlamCloset App! 💫',
-                        subject: 'GlamCloset Outfit',
-                      );
+                    onPressed: () async {
+                      try {
+                        // 1️⃣ Convert base64 image to bytes
+                        final imageBytes = base64Decode(item['imageBase64']);
+
+                        // 2️⃣ Get temporary directory
+                        final tempDir = await getTemporaryDirectory();
+                        final file = await File('${tempDir.path}/${item['id']}.png').create();
+                        await file.writeAsBytes(imageBytes);
+
+                        // 3️⃣ Share text + image file
+                        await Share.shareXFiles(
+                          [XFile(file.path)],
+                          text: '👗 Check out this Omani outfit on GlamCloset!\n'
+                              '✨ ${item['title']} - ${item['price']} OMR\n\n'
+                              'Rent it now on GlamCloset App! 💫',
+                          subject: 'GlamCloset Outfit',
+                        );
+                      } catch (e) {
+                        print('❌ Error sharing: $e');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Error sharing this dress.')),
+                        );
+                      }
                     },
                   ),
+
                   ElevatedButton(
-                    onPressed: () {
+                    onPressed: (item['availableCount'] ?? 0) == 0
+                        ? null // disable button
+                        : () {
                       _toggleCart(item);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${item['title']} added to cart')),
-                      );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: cardGradient[0],
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      backgroundColor: (item['availableCount'] ?? 0) == 0
+                          ? Colors.grey
+                          : Colors.white,
+                      foregroundColor: (item['availableCount'] ?? 0) == 0
+                          ? Colors.white
+                          : cardGradient[0],
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(24),
                       ),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
-                    child: const Text('Rent'),
+                    child: Text((item['availableCount'] ?? 0) == 0 ? 'Sold Out' : 'Rent'),
                   ),
+
                 ],
               ),
             ),
@@ -383,8 +485,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
       ),
     );
   }
-
-
 
   Widget _buildTrendingDressCard(
       Map<String, dynamic> item,
@@ -463,7 +563,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    'Age: ${item['age']}',
+                    'Age: ${item['age']} }',
                     style: TextStyle(
                         fontSize: 11, color: isDark ? Colors.white70 : Colors.grey[800]),
                   ),

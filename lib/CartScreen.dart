@@ -14,7 +14,9 @@ class CartScreen extends StatefulWidget {
   const CartScreen({super.key, this.rentedItems = const [], this.skipFirebase = false});
 
   @override
-  _CartScreenState createState() => _CartScreenState();
+  _CartScreenState createState() => _CartScreenState(
+
+  );
 }
 
 class _CartScreenState extends State<CartScreen> {
@@ -59,30 +61,84 @@ class _CartScreenState extends State<CartScreen> {
     } else if (item['price'] is num) {
       price = (item['price'] as num).toDouble();
     }
-    return sum + price;
+    int quantity = item['quantity'] ?? 1;
+    return sum + (price * quantity);
   });
+
 
   double get totalDeposit => cartItems.length * securityDepositPerItem;
 
   double get grandTotal => totalPrice + totalDeposit;
 
-  int get totalItems => cartItems.length;
+  int get totalItems => cartItems.fold<int>(
+    0,
+        (sum, item) => sum + ((item['quantity'] ?? 1) as int),
+  );
+
+
 
   int _currentIndex = 0;
 
-  void _removeItem(int index) {
+  Future<void> restoreItemToStock(Map<String, dynamic> item) async {
+    try {
+      final DatabaseReference rentedRef =
+      FirebaseDatabase.instance.ref('rented_clothes/${item['id']}');
+
+      final snapshot = await rentedRef.get();
+      if (snapshot.exists) {
+        final data = Map<String, dynamic>.from(snapshot.value as Map);
+        int currentAvailable = data['availableCount'] ?? 0;
+        int total = data['quantity'] ?? data['totalCount'] ?? 0;
+        int quantity = item['quantity'] ?? 1;
+
+        int newAvailable = currentAvailable + quantity;
+        if (newAvailable > total) newAvailable = total;
+
+        await rentedRef.update({
+          'availableCount': newAvailable,
+          'available': newAvailable > 0,
+        });
+
+        print('✅ Restored ${item['id']} → now $newAvailable available');
+      }
+    } catch (e) {
+      print('❌ Error restoring stock: $e');
+    }
+  }
+
+
+  void _removeItem(int index) async {
     final removedItem = cartItems[index];
     final userCartRef = FirebaseDatabase.instance.ref('users/$userId/cart');
-    userCartRef.child(removedItem['id']).remove();
 
-    _listKey.currentState!.removeItem(
-      index,
-          (context, animation) => _buildCartItem(removedItem, index, animation),
-      duration: const Duration(milliseconds: 500),
-    );
-    cartItems.removeAt(index);
-    setState(() {});
+    // ✅ Restore this item back to stock
+    await restoreItemToStock(removedItem);
+
+    // 🧹 Remove from Firebase cart
+    await userCartRef.child(removedItem['id']).remove();
+
+    // 🧩 Update local UI instantly
+    setState(() {
+      cartItems.removeAt(index);
+    });
+
+    // ✅ If cart becomes empty → show a message
+    if (cartItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cart is empty — items restored to stock!')),
+      );
+    }
   }
+
+  void _updateItemQuantity(Map<String, dynamic> item) {
+    if (userId == null) return;
+    final userCartRef = FirebaseDatabase.instance.ref('users/$userId/cart');
+
+    userCartRef.child(item['id']).update({
+      'quantity': item['quantity'],
+    });
+  }
+
 
   Widget _buildCartItem(Map<String, dynamic> item, int index, Animation<double> animation) {
     return SizeTransition(
@@ -92,19 +148,10 @@ class _CartScreenState extends State<CartScreen> {
         child: Builder(builder: (context) {
           final isDark = Provider.of<ThemeNotifier>(context).isDarkMode;
 
-          final lightGradients = [
-            [Colors.pink.shade300, Colors.purple.shade300],
-            [Colors.orange.shade300, Colors.yellow.shade400],
-            [Colors.teal.shade300, Colors.green.shade400],
-          ];
-          final darkGradients = [
-            [Colors.deepPurple.shade700, Colors.purple.shade900],
-            [Colors.orange.shade900, Colors.red.shade900],
-            [Colors.teal.shade700, Colors.green.shade900],
-          ];
           final gradient = isDark
-              ? darkGradients[index % darkGradients.length]
-              : lightGradients[index % lightGradients.length];
+              ? [Colors.deepPurple.shade800, Colors.purple.shade900]
+              : [Colors.pink.shade300, Colors.purple.shade300];
+
 
           return Container(
             margin: const EdgeInsets.only(bottom: 18),
@@ -145,14 +192,128 @@ class _CartScreenState extends State<CartScreen> {
                 item['title'] ?? '',
                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               ),
-              subtitle: Text(
-                'Age: ${item['age'] ?? ''}  |  ${item['price']} OMR',
-                style: const TextStyle(color: Colors.white70),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Age: ${item['age'] ?? ''}  |  ${item['price']} OMR',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+
+                ],
               ),
-              trailing: IconButton(
-                onPressed: () => _removeItem(index),
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+
+
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08), // light transparent background
+                  borderRadius: BorderRadius.circular(40), // smooth rounded capsule
+                  border: Border.all(color: Colors.white30, width: 0.6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+
+                    // Decrease quantity
+                    GestureDetector(
+                      onTap: () {
+                        int currentQty = item['quantity'] ?? 1;
+                        if (currentQty > 1) {
+                          setState(() {
+                            item['quantity'] = currentQty - 1;
+                          });
+                          _updateItemQuantity(item); // Only update user's cart
+                        } else {
+                          _removeItem(index); // Remove from cart, do not update stock here
+                        }
+                      },
+                      child: const Icon(Icons.remove, color: Colors.white70, size: 13),
+                    ),
+
+
+
+
+                    const SizedBox(width: 4),
+
+                    // Quantity text
+                    Text(
+                      '${item['quantity'] ?? 1}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+
+                    const SizedBox(width: 4),
+
+
+                    // Increase quantity
+                    GestureDetector(
+                      onTap: () async {
+                        if (userId == null) return;
+
+                        int currentQty = item['quantity'] ?? 1;
+
+                        // 🔹 Fetch latest available count from Firebase
+                        final dressRef = FirebaseDatabase.instance.ref('rented_clothes/${item['id']}');
+                        final snapshot = await dressRef.get();
+
+                        int availableCount = 0;
+                        if (snapshot.exists) {
+                          final data = Map<String, dynamic>.from(snapshot.value as Map);
+                          availableCount = int.tryParse(
+                              data['availableCount']?.toString() ??
+                                  data['quantity']?.toString() ??
+                                  '0'
+                          ) ?? 0;
+                        }
+
+                        if (currentQty + 1 <= availableCount) {
+                          setState(() {
+                            item['quantity'] = currentQty + 1;
+                          });
+                          _updateItemQuantity(item);
+                        } else {
+                          // ❌ Show the proper message with the current stock
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Cannot add more. Only $availableCount available.'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Icon(Icons.add, color: Colors.white70, size: 13),
+                    ),
+
+
+
+
+                    const SizedBox(width: 6),
+
+                    // Divider
+                    Container(
+                      height: 14,
+                      width: 0.8,
+                      color: Colors.white24,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                    ),
+
+                    // Delete button
+                    GestureDetector(
+                      onTap: () => _removeItem(index),
+                      child: const Icon(Icons.delete_outline, color: Colors.white, size: 14),
+                    ),
+                  ],
+                ),
               ),
+
+
+
+
+
             ),
           );
         }),
@@ -231,14 +392,38 @@ class _CartScreenState extends State<CartScreen> {
         child: Column(
           children: [
             Expanded(
-              child: AnimatedList(
-                key: _listKey,
-                initialItemCount: cartItems.length,
-                itemBuilder: (context, index, animation) {
-                  return _buildCartItem(cartItems[index], index, animation);
+              child: StreamBuilder(
+                stream: FirebaseDatabase.instance
+                    .ref('users/${FirebaseAuth.instance.currentUser!.uid}/cart')
+                    .onValue,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (!snapshot.hasData ||
+                      (snapshot.data! as DatabaseEvent).snapshot.value == null) {
+                    return const Center(child: Text('🛒 Your cart is empty.'));
+                  }
+
+                  final data = Map<String, dynamic>.from(
+                      (snapshot.data! as DatabaseEvent).snapshot.value as Map);
+
+                  final cartItems = data.entries
+                      .map((e) => Map<String, dynamic>.from(e.value))
+                      .toList();
+
+                  return ListView.builder(
+                    itemCount: cartItems.length,
+                    itemBuilder: (context, index) {
+                      return _buildCartItem(cartItems[index], index, kAlwaysCompleteAnimation);
+                    },
+                  );
                 },
               ),
             ),
+
+
             const SizedBox(height: 10),
 
             // 🔹 Modern Totals & Payment Section

@@ -28,12 +28,20 @@ class _ClothingListReviewPageState extends State<ClothingListReviewPage> {
       if (data != null) {
         final fetched = data.entries.map((e) {
           final cloth = Map<String, dynamic>.from(e.value);
+
+          int quantity = cloth['quantity'] ?? 0;
+          int availableCount = cloth['availableCount'] ?? quantity;
+
+          bool visible = cloth['visible'] ?? true;
+
           return {
             'id': e.key,
             'name': cloth['name'] ?? 'Unknown',
             'age': cloth['ageRange'] ?? 'N/A',
             'price': cloth['price'] ?? 0,
-            'available': cloth['available'] ?? true,
+            'visible': visible,
+            'availableCount': availableCount,
+            'quantity': quantity,
             'imageBase64': cloth['imageBase64'] ?? '',
           };
         }).toList();
@@ -47,13 +55,13 @@ class _ClothingListReviewPageState extends State<ClothingListReviewPage> {
     });
   }
 
-  // Toggle availability in Firebase
-  void _toggleAvailability(int index, bool value) {
+  // Toggle visibility (admin control)
+  void _toggleVisibility(int index, bool value) {
     final id = clothes[index]['id'];
-    _ref.child(id).update({'available': value});
+    _ref.child(id).update({'visible': value});
   }
 
-  // Delete from Firebase
+  // Delete cloth
   void _deleteItem(int index) {
     final id = clothes[index]['id'];
 
@@ -120,8 +128,10 @@ class _ClothingListReviewPageState extends State<ClothingListReviewPage> {
           itemCount: clothes.length,
           itemBuilder: (context, index) {
             final item = clothes[index];
-            final isAvailable = item['available'] as bool;
+            final isVisible = item['visible'] as bool;
             final imageData = item['imageBase64'];
+            final availableCount = item['availableCount'];
+            final quantity = item['quantity'];
 
             return Card(
               color: cardColor,
@@ -168,9 +178,7 @@ class _ClothingListReviewPageState extends State<ClothingListReviewPage> {
                           Text(
                             "${item['price']} OMR",
                             style: TextStyle(
-                              color: isDark
-                                  ? Colors.green[300]
-                                  : Colors.green[700],
+                              color: isDark ? Colors.green[300] : Colors.green[700],
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
                             ),
@@ -180,35 +188,58 @@ class _ClothingListReviewPageState extends State<ClothingListReviewPage> {
                               "Age: ${item['age']}",
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isDark
-                                    ? Colors.grey[400]
-                                    : Colors.grey[700],
+                                color: isDark ? Colors.grey[400] : Colors.grey[700],
+                              ),
+                            ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Stock: $availableCount / $quantity",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blueGrey,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          // Show out of stock message
+                          if (availableCount == 0)
+                            Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.red[300],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                "Out of Stock",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                         ],
                       ),
                     ),
+
                     Column(
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: isAvailable
-                                ? Colors.green[100]
-                                : Colors.red[100],
+                            color: isVisible ? Colors.green[100] : Colors.red[100],
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            isAvailable ? "Available" : "Unavailable",
+                            isVisible ? "Visible" : "Hidden",
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: isAvailable
-                                  ? Colors.green[700]
-                                  : Colors.red[700],
+                              color: isVisible ? Colors.green[700] : Colors.red[700],
                             ),
                           ),
                         ),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
                             IconButton(
@@ -216,9 +247,8 @@ class _ClothingListReviewPageState extends State<ClothingListReviewPage> {
                               onPressed: () => _deleteItem(index),
                             ),
                             Switch(
-                              value: isAvailable,
-                              onChanged: (value) =>
-                                  _toggleAvailability(index, value),
+                              value: isVisible,
+                              onChanged: (value) => _toggleVisibility(index, value),
                               activeColor: Colors.green,
                               inactiveThumbColor: Colors.red,
                               inactiveTrackColor: Colors.red[200],

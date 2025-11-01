@@ -10,6 +10,7 @@ android {
     namespace = "com.example.glamcloset"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+    compileSdk = 35
 
 
     compileOptions {

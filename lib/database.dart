@@ -12,8 +12,10 @@ class DatabaseService {
     required String userId,
     required String email,
     required String contactNo,
-    required String city,
+    required String governorate,
+    required String wilayat,
     required String hashedPassword,
+    required String gender,
     String userType = 'user',
   }) async {
     try {
@@ -22,7 +24,8 @@ class DatabaseService {
       await userReference.set({
         'email': email,
         'contactNo': contactNo,
-        'city': city,
+        'governorate': governorate,
+        'wilayat': wilayat,
         'password': hashedPassword,
         'userType': userType,
 
@@ -40,7 +43,13 @@ class DatabaseService {
       final snapshot = await userReference.get();
 
       if (snapshot.exists) {
-        return Map<String, dynamic>.from(snapshot.value as Map);
+        final data = Map<String, dynamic>.from(snapshot.value as Map);
+
+        // Ensure governorate & wilayat exist in the returned map
+        data['governorate'] = data['governorate'] ?? '';
+        data['wilayat'] = data['wilayat'] ?? '';
+
+        return data;
       } else {
         print("⚠️ User data not found.");
         return null;
@@ -50,6 +59,7 @@ class DatabaseService {
       return null;
     }
   }
+
 
   Future<bool> isAdmin(String userId) async {
     try {
@@ -63,6 +73,32 @@ class DatabaseService {
       return false;
     }
   }
+// ------------------- Upload & Save Profile Picture -------------------
+  Future<String?> uploadProfileImage(File imageFile, String userId) async {
+    try {
+      // Create unique file path in Firebase Storage
+      final String fileName = 'profile_$userId.jpg';
+      final Reference ref = _storage.ref().child('profile_images/$fileName');
+
+      // Upload the file to Firebase Storage
+      final UploadTask uploadTask = ref.putFile(imageFile);
+      final TaskSnapshot snapshot = await uploadTask.whenComplete(() {});
+
+      // Get the download URL after successful upload
+      final String downloadUrl = await snapshot.ref.getDownloadURL();
+
+      // Save the image download URL under the user node in Realtime Database
+      await _database.child('users/$userId/profileImage').set(downloadUrl);
+
+      print("✅ Profile image uploaded and URL saved to Realtime Database!");
+      return downloadUrl;
+    } catch (e) {
+      print("❌ Error uploading profile image: $e");
+      return null;
+    }
+  }
+
+
 
   // ------------------- Save Dress Data -------------------
   Future<void> saveDressData({
@@ -173,12 +209,22 @@ class DatabaseService {
     required String userId,
     required List<Map<String, dynamic>> cartItems,
   }) async {
-    final DatabaseReference rentedRef =
-    FirebaseDatabase.instance.ref('rented_clothes');
-    final DatabaseReference userCartRef =
-    FirebaseDatabase.instance.ref('users/$userId/cart');
+    final DatabaseReference rentedRef = _database.child('rented_clothes');
+    final DatabaseReference userCartRef = _database.child('users/$userId/cart');
+    final DatabaseReference userOrdersRef = _database.child('orders/$userId');
 
     try {
+      final orderId = "order_${DateTime.now().millisecondsSinceEpoch}";
+      final String orderDate = DateTime.now().toIso8601String();
+
+      // 🛍 Create order object
+      final Map<String, dynamic> orderData = {
+        'userId': userId,
+        'orderId': orderId,
+        'date': orderDate,
+        'items': {},
+      };
+
       for (var item in cartItems) {
         final clothId = item['id'];
         final quantity = (item['quantity'] is int)
@@ -187,39 +233,46 @@ class DatabaseService {
 
         if (clothId == null) continue;
 
+        // 🔹 Get the dress from Firebase
         final clothSnapshot = await rentedRef.child(clothId).get();
+
         if (clothSnapshot.exists) {
           final clothData =
           Map<String, dynamic>.from(clothSnapshot.value as Map);
 
           int availableCount =
               clothData['availableCount'] ?? clothData['totalCount'] ?? 0;
+          final newAvailableCount = (availableCount - quantity).clamp(0, 9999);
 
-          if (availableCount > 0) {
-            final newAvailableCount = availableCount - quantity;
+          // 🔹 Update stock
+          await rentedRef.child(clothId).update({
+            'availableCount': newAvailableCount,
+            'available': newAvailableCount > 0,
+          });
 
-            await rentedRef.child(clothId).update({
-              'availableCount': newAvailableCount < 0 ? 0 : newAvailableCount,
-              'available': newAvailableCount > 0,
-            });
+          print('🟢 Updated $clothId → availableCount = $newAvailableCount');
 
-            print(
-                '🟢 Updated $clothId: availableCount = $newAvailableCount (rented $quantity)');
-          } else {
-            print('⚠️ $clothId is already out of stock.');
-          }
+          // 🔹 Add to order
+          orderData['items'][clothId] = {
+            'name': clothData['name'] ?? '',
+            'price': clothData['price'] ?? 0,
+            'quantity': quantity,
+            'imageUrl': clothData['imageUrl'] ?? '',
+          };
         } else {
-          print('⚠️ Cloth ID $clothId not found in rented_clothes.');
+          print('⚠️ Cloth ID $clothId not found.');
         }
       }
 
-      // ✅ Finally, clear the user's cart after payment
+      // ✅ Save the full order under the user
+      await userOrdersRef.child(orderId).set(orderData);
+
+      // 🧹 Clear the cart
       await userCartRef.remove();
-      print('✅ Payment complete, cart cleared, and stock updated!');
+
+      print('✅ Payment complete → Order saved & cart cleared!');
     } catch (e) {
       print('❌ Error during payment processing: $e');
     }
   }
-}
-
-
+  }

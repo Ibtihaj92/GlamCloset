@@ -3,8 +3,8 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'user_login.dart';
 import 'database.dart';
+import 'user_login.dart';
 
 class UserRegister extends StatefulWidget {
   final bool isTest;
@@ -20,7 +20,10 @@ class _UserRegisterState extends State<UserRegister> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController contactNoController = TextEditingController();
-  String? selectedCity;
+  final TextEditingController genderController = TextEditingController();
+
+  String? selectedGovernorate;
+  String? selectedWilayat;
   bool _obscurePassword = true;
 
   final List<String> cities = [
@@ -28,6 +31,20 @@ class _UserRegisterState extends State<UserRegister> {
     'North Al Batinah', 'South Al Batinah', 'South Ash Sharaqiyah',
     'North Ash Shariqiyah', 'Adh Dhahira', 'Al Wusta'
   ];
+
+  final Map<String, List<String>> governorateMap = {
+    'Muscat': ['Muscat', 'Mutrah', 'Al Amarat', 'Bawshar', 'Seeb', 'Qurayyat'],
+    'Ad Dakhiliyah': ['Nizwa','Bahla','Manah','Al Hamra','Adam','Izki','Samail','Bidbid','Al Jabal Al Akhdar'],
+    'North Al Batinah': ['Sohar','Shinas','Liwa','Saham','Al Khaburah','Al Suwaiq'],
+    'South Al Batinah': ['Rustaq','Al Awabi','Nakhal','Wadi Al Ma’awil','Barka','Al Musannah'],
+    'Al Wusta': ['Haima','Mahout','Duqm','Al Jazer'],
+    'North Ash Sharqiyah': ['Ibra','Mudhaibi','Bidiya','Al Qabil','Wadi Bani Khalid','Dema Wa Tayeen','Sinaw'],
+    'South Ash Sharqiyah': ['Sur','Al Kamil Wal Wafi','Jaalan Bani Bu Hassan','Jaalan Bani Bu Ali','Masirah'],
+    'Ad Dhahirah': ['Ibri','Yanqul','Dhank'],
+    'Musandam': ['Khasab','Diba','Bukha','Madha'],
+    'Dhofar': ['Salalah','Taqah','Mirbat','Rakhyut','Thumrait','Dhalkut','Al Mazyona','Muqshin','Shaleem and Al Halaniyat Islands','Sadah'],
+    'Al Buraimi': ['Al Buraimi','Mahdah','As Sunainah'],
+  };
 
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
   FlutterLocalNotificationsPlugin();
@@ -39,66 +56,81 @@ class _UserRegisterState extends State<UserRegister> {
   }
 
   Future<void> _initializeNotifications() async {
-    const AndroidInitializationSettings initializationSettingsAndroid =
+    const AndroidInitializationSettings androidSettings =
     AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    final InitializationSettings initializationSettings =
-    InitializationSettings(android: initializationSettingsAndroid);
+    final InitializationSettings initSettings =
+    InitializationSettings(android: androidSettings);
 
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    await flutterLocalNotificationsPlugin.initialize(initSettings);
   }
 
   void _registerUser() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        String email = emailController.text.trim();
-        String password = passwordController.text.trim();
-        String contactNo = contactNoController.text.trim();
-        String city = selectedCity!;
+    if (!_formKey.currentState!.validate()) return;
 
-        UserCredential userCredential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
-            email: email, password: password);
+    if (genderController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select your gender")),
+      );
+      return;
+    }
 
-        final uid = userCredential.user!.uid;
-        String hashedPassword = hashPassword(password);
+    if (selectedGovernorate == null || selectedWilayat == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select your governorate and wilayat")),
+      );
+      return;
+    }
 
-        await DatabaseService().saveUserData(
-          userId: uid,
-          email: email,
-          contactNo: contactNo,
-          city: city,
-          hashedPassword: hashedPassword,
-        );
+    try {
+      String email = emailController.text.trim();
+      String password = passwordController.text.trim();
+      String contactNo = contactNoController.text.trim();
+      String gender = genderController.text.trim();
 
-        flutterLocalNotificationsPlugin.show(
-          0,
-          'Registration Successful',
-          'You have successfully registered!',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'registration_channel',
-              'Registration',
-              importance: Importance.max,
-              priority: Priority.high,
-              showWhen: false,
-            ),
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      final uid = userCredential.user!.uid;
+      String hashedPassword = hashPassword(password);
+
+      await DatabaseService().saveUserData(
+        userId: uid,
+        email: email,
+        contactNo: contactNo,
+        governorate: selectedGovernorate!,
+        wilayat: selectedWilayat!,
+        hashedPassword: hashedPassword,
+        gender: gender,
+      );
+
+      flutterLocalNotificationsPlugin.show(
+        0,
+        'Registration Successful',
+        'You have successfully registered!',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'registration_channel',
+            'Registration',
+            importance: Importance.max,
+            priority: Priority.high,
+            showWhen: false,
           ),
-        );
+        ),
+      );
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => LoginPage()),
-        );
-      } on FirebaseAuthException catch (e) {
-        String errorMessage = '❌ Failed to register: ${e.message}';
-        if (e.code == 'email-already-in-use') {
-          errorMessage = '❌ This email is already in use. Please try another.';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginPage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = '❌ Failed to register: ${e.message}';
+      if (e.code == 'email-already-in-use') {
+        errorMessage = '❌ This email is already in use. Please try another.';
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
     }
   }
 
@@ -123,13 +155,13 @@ class _UserRegisterState extends State<UserRegister> {
                 Center(
                   child: Image.asset(
                     'images/logo.png',
-                    height: 210,
+                    height: 180,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 15),
                 const Text(
                   "Register to GlamCloset!",
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 20),
                 _buildEmailField(),
@@ -138,7 +170,11 @@ class _UserRegisterState extends State<UserRegister> {
                 const SizedBox(height: 15),
                 _buildPhoneField(),
                 const SizedBox(height: 15),
-                _buildCityDropdown(),
+                _buildGovernorateDropdown(),
+                const SizedBox(height: 15),
+                _buildWilayatDropdown(),
+                const SizedBox(height: 15),
+                _buildGenderSelection(),
                 const SizedBox(height: 25),
                 SizedBox(
                   width: double.infinity,
@@ -217,8 +253,8 @@ class _UserRegisterState extends State<UserRegister> {
         contentPadding:
         const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         suffixIcon: IconButton(
-          icon: Icon(
-              _obscurePassword ? Icons.visibility_off : Icons.visibility),
+          icon:
+          Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
           onPressed: () {
             setState(() {
               _obscurePassword = !_obscurePassword;
@@ -255,23 +291,89 @@ class _UserRegisterState extends State<UserRegister> {
     );
   }
 
-  Widget _buildCityDropdown() {
+
+  Widget _buildGovernorateDropdown() {
     return DropdownButtonFormField<String>(
-      value: selectedCity,
-      hint: Text("Select City"),
+      value: selectedGovernorate,
+      hint: const Text("Select Governorate"),
       decoration: InputDecoration(
+        labelText: "Governorate",
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
       ),
-      onChanged: (value) => setState(() => selectedCity = value),
-      items: cities.map((city) {
+      onChanged: (value) {
+        setState(() {
+          selectedGovernorate = value;
+          selectedWilayat = null;
+        });
+      },
+      items: governorateMap.keys.map((gov) {
         return DropdownMenuItem(
-          value: city,
-          child: Text(city),
+          value: gov,
+          child: Text(gov),
         );
       }).toList(),
-      validator: (value) => value == null ? "Please select a city" : null,
+      validator: (value) => value == null ? "Please select a governorate" : null,
+    );
+  }
+
+  Widget _buildWilayatDropdown() {
+    return DropdownButtonFormField<String>(
+      value: selectedWilayat,
+      hint: const Text("Select Wilayat"),
+      decoration: InputDecoration(
+        labelText: "Wilayat",
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+      ),
+      onChanged: (value) => setState(() => selectedWilayat = value),
+      items: selectedGovernorate == null
+          ? []
+          : governorateMap[selectedGovernorate]!.map((wilayat) {
+        return DropdownMenuItem(
+          value: wilayat,
+          child: Text(wilayat),
+        );
+      }).toList(),
+      validator: (value) => value == null ? "Please select a wilayat" : null,
+    );
+  }
+
+  Widget _buildGenderSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Select Gender",
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: RadioListTile<String>(
+                title: const Text("Male"),
+                value: "Male",
+                groupValue: genderController.text,
+                onChanged: (value) {
+                  setState(() => genderController.text = value!);
+                },
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            Expanded(
+              child: RadioListTile<String>(
+                title: const Text("Female"),
+                value: "Female",
+                groupValue: genderController.text,
+                onChanged: (value) {
+                  setState(() => genderController.text = value!);
+                },
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

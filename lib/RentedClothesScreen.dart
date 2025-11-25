@@ -6,13 +6,15 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'settings_page.dart';
 import 'AccountDetails.dart';
+import 'RenterNotificationsPage.dart';
+
 
 /// ------------------- Model -------------------
 class RentedCloth {
   final String id;
   final String name;
   final String imageBase64;
-  final String ageRange;
+  final String size;
   final double price;
   final String userId;
   final int quantity;
@@ -21,7 +23,7 @@ class RentedCloth {
     required this.id,
     required this.name,
     required this.imageBase64,
-    required this.ageRange,
+    required this.size,
     required this.price,
     required this.userId,
     required this.quantity,
@@ -39,11 +41,36 @@ class RentedClothesScreen extends StatefulWidget {
 class _RentedClothesScreenState extends State<RentedClothesScreen> {
   List<RentedCloth> _rentedClothes = [];
   final _auth = FirebaseAuth.instance;
+  int _notificationCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadClothesFromFirebase();
+    _loadNotificationCount();
+
+  }
+  void _loadNotificationCount() {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    DatabaseReference notifRef =
+    FirebaseDatabase.instance.ref('notifications/${user.uid}');
+    notifRef.onValue.listen((event) {
+      final data = event.snapshot.value;
+      int count = 0;
+      if (data != null && data is Map<dynamic, dynamic>) {
+        data.forEach((key, value) {
+          final notification = Map<dynamic, dynamic>.from(value);
+          if (notification['status'] == 'pending') {
+            count++;
+          }
+        });
+      }
+      setState(() {
+        _notificationCount = count;
+      });
+    });
   }
 
   void _loadClothesFromFirebase() {
@@ -60,7 +87,7 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
             loadedClothes.add(RentedCloth(
               id: value['id'] ?? key,
               name: value['name'] ?? '',
-              ageRange: value['ageRange'] ?? '',
+              size: value['size'] ?? '',
               price: double.tryParse(value['price'].toString()) ?? 0,
               imageBase64: value['imageBase64'] ?? '',
               userId: value['userId'] ?? '',
@@ -110,7 +137,24 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
         ),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications, color: Colors.black),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RenterNotificationsPage(
+                    renterId: _auth.currentUser!.uid,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
+
+
       body: _rentedClothes.isEmpty
           ? Center(
         child: Text(
@@ -126,90 +170,32 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
           final cloth = _rentedClothes[index];
           return Stack(
             children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isDark
-                        ? [Colors.indigo[700]!, Colors.grey]
-                        : [Colors.deepPurpleAccent, Colors.pinkAccent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isDark ? Colors.black54 : Colors.black26,
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
+
+
+              // ---------------- BADGE ----------------
+              if (_notificationCount > 0)
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
                     ),
-                  ],
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: cloth.imageBase64.isNotEmpty
-                        ? MemoryImage(base64Decode(cloth.imageBase64))
-                        : null,
-                    child: cloth.imageBase64.isEmpty
-                        ? const Icon(Icons.image, size: 40, color: Colors.grey)
-                        : null,
-                  ),
-                  title: Text(
-                    cloth.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
-                  ),
-                  subtitle: Text(
-                    'Age: ${cloth.ageRange}\nQuantity: ${cloth.quantity}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.white, size: 28),
-                        onPressed: () => _navigateToUpdateScreen(cloth),
+                    child: Text(
+                      '$_notificationCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.white, size: 28),
-                        onPressed: () => _deleteCloth(cloth.id),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // Price badge
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.red[700] : Colors.red[700],
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(20),
-                      bottomLeft: Radius.circular(12),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    '${cloth.price} OMR',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
                   ),
                 ),
-              ),
             ],
           );
+
         },
       ),
       floatingActionButton: FloatingActionButton(
@@ -261,8 +247,19 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
   File? _pickedImage;
   bool _imageError = false;
   final _auth = FirebaseAuth.instance;
+  String? selectedSize;
+  final List<String> sizes = [
+    'X-Small',
+    'Small',
+    'Medium',
+    'Large',
+    'X-Large',
+    'XX-Large',
+  ];
+
   String? selectedOccasion;
-  final List<String> occasions = ['Wedding', 'Eid', 'Party', 'All'];
+  final List<String> occasions = ['eid_fitr', 'National Day','eid_adha','wedding','none'];
+
 
 
   Future<void> _pickImage() async {
@@ -291,7 +288,7 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
     final newCloth = {
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'name': nameController.text.trim(),
-      'ageRange': sizeController.text.trim(),
+      'size': selectedSize,
       'price': double.parse(priceController.text),
       'imageBase64': base64Image,
       'userId': user.uid,
@@ -337,24 +334,7 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
         return 'Name must contain only letters';
       }
     }
-    if (label == "Size (Age Range)") {
-      // Accept single number
-      if (RegExp(r'^\d+$').hasMatch(value)) {
-        final numValue = int.parse(value);
-        if (numValue <= 0) return 'Size must be greater than 0';
-      }
-      // Accept range like 3-9
-      else if (RegExp(r'^\d+-\d+$').hasMatch(value)) {
-        final parts = value.split('-');
-        final start = int.parse(parts[0]);
-        final end = int.parse(parts[1]);
-        if (start <= 0 || end <= 0) return 'Size numbers must be greater than 0';
-        if (start >= end) return 'Start of range must be less than end';
-      }
-      else {
-        return 'Size must be a number or range like 3-9';
-      }
-    }
+
 
     if (label == "Price"|| label == "Quantity") {
       final numValue = double.tryParse(value);
@@ -396,7 +376,29 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
                 const SizedBox(height: 32),
                 _buildTextField("Name of the cloth", nameController),
                 const SizedBox(height: 16),
-                _buildTextField("Size (Age Range)", sizeController),
+                DropdownButtonFormField<String>(
+                  value: selectedSize,
+                  dropdownColor: isDark ? Colors.grey[800] : Colors.white,
+                  decoration: InputDecoration(
+                    labelText: "Size",
+                    filled: true,
+                    fillColor: inputColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: sizes.map((size) {
+                    return DropdownMenuItem(
+                      value: size,
+                      child: Text(size, style: TextStyle(color: textColor)),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedSize = value;
+                    });
+                  },
+                  validator: (value) =>
+                  value == null ? "Please select a size" : null,
+                ),
                 const SizedBox(height: 16),
                 _buildTextField("Price", priceController,
                     keyboardType: TextInputType.number),
@@ -487,7 +489,17 @@ class UpdateClothScreen extends StatefulWidget {
 class _UpdateClothScreenState extends State<UpdateClothScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController nameController;
-  late TextEditingController sizeController;
+  String? selectedSize;
+
+  final List<String> sizes = [
+    'X-Small',
+    'Small',
+    'Medium',
+    'Large',
+    'X-Large',
+    'XX-Large',
+  ];
+
   late TextEditingController priceController;
   late TextEditingController quantityController;
   File? _pickedImage;
@@ -496,7 +508,7 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
   void initState() {
     super.initState();
     nameController = TextEditingController(text: widget.cloth.name);
-    sizeController = TextEditingController(text: widget.cloth.ageRange);
+    selectedSize = widget.cloth.size;
     priceController = TextEditingController(text: widget.cloth.price.toString());
     quantityController = TextEditingController(text: widget.cloth.quantity.toString());
   }
@@ -523,7 +535,7 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
     final updatedCloth = {
       'id': widget.cloth.id,
       'name': nameController.text.trim(),
-      'ageRange': sizeController.text.trim(),
+      'size': selectedSize,
       'price': double.parse(priceController.text),
       'imageBase64': base64Image,
       'userId': widget.cloth.userId,
@@ -553,25 +565,6 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
             return 'Name must contain only letters';
           }
         }
-        if (label == "Size (Age Range)") {
-          // Accept single number
-          if (RegExp(r'^\d+$').hasMatch(value)) {
-            final numValue = int.parse(value);
-            if (numValue <= 0) return 'Size must be greater than 0';
-          }
-          // Accept range like 3-9
-          else if (RegExp(r'^\d+-\d+$').hasMatch(value)) {
-            final parts = value.split('-');
-            final start = int.parse(parts[0]);
-            final end = int.parse(parts[1]);
-            if (start <= 0 || end <= 0) return 'Size numbers must be greater than 0';
-            if (start >= end) return 'Start of range must be less than end';
-          }
-          else {
-            return 'Size must be a number or range like 3-9';
-          }
-        }
-
 
         if ( label == "Price" || label == "Quantity") {
           final numValue = double.tryParse(value);
@@ -623,7 +616,34 @@ class _UpdateClothScreenState extends State<UpdateClothScreen> {
                 const SizedBox(height: 32),
                 _buildTextField("Name of the cloth", nameController),
                 const SizedBox(height: 16),
-                _buildTextField("Size (Age Range)", sizeController),
+                DropdownButtonFormField<String>(
+                  value: selectedSize,
+                  decoration: InputDecoration(
+                    labelText: "Size",
+                    filled: true,
+                    fillColor: inputColor,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  items: sizes.map((size) {
+                    return DropdownMenuItem(
+                      value: size,
+                      child: Text(size, style: TextStyle(color: textColor)),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedSize = value;
+                    });
+                  },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return "Please select a size";
+                    }
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 16),
                 _buildTextField("Price", priceController,
                     keyboardType: TextInputType.number),

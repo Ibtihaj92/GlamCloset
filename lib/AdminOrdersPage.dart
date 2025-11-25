@@ -1,217 +1,339 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'database.dart';
+import 'RenterNotificationsPage.dart';
 
-class AdminOrdersPage extends StatelessWidget {
-  const AdminOrdersPage({super.key});
+class AdminOrdersPage extends StatefulWidget {
+  @override
+  _AdminOrdersPageState createState() => _AdminOrdersPageState();
+}
 
-  final List<Map<String, dynamic>> orders = const [
-    {
-      "orderId": "ORD123",
-      "dresses": [
-        {
-          "name": "Sharqayh",
-          "image":
-          "https://i.pinimg.com/originals/42/ed/48/42ed484e63efb02046bfb7655900bbfe.jpg"
-        }
-      ],
-      "renterEmail": "renter1@example.com",
-      "customerEmail": "customer1@example.com",
-      "pickupLocation": "Jinakum Office",
-      "deliveryTime": "Thursday 7 PM",
-      "insuranceAmount": 5,
-      "rentalAmount": 20,
-      "status": "Pending"
-    },
-    {
-      "orderId": "ORD124",
-      "dresses": [
-        {
-          "name": "Suri",
-          "image":
-          "https://i.pinimg.com/originals/02/d4/e3/02d4e3f34b0cbb1a13a24db6fa3c25c9.jpg"
-        },
-        {
-          "name": "Sharqayh",
-          "image":
-          "https://i.pinimg.com/originals/42/ed/48/42ed484e63efb02046bfb7655900bbfe.jpg"
-        }
-      ],
-      "renterEmail": "renter2@example.com",
-      "customerEmail": "customer2@example.com",
-      "pickupLocation": "Jinakum Office",
-      "deliveryTime": "Friday 5 PM",
-      "insuranceAmount": 8,
-      "rentalAmount": 30,
-      "status": "In Progress"
-    },
-  ];
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'Pending':
-        return Colors.orange;
-      case 'In Progress':
-        return Colors.blue;
-      case 'Delivered':
-        return Colors.green;
-      case 'Returned':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
+class _AdminOrdersPageState extends State<AdminOrdersPage> {
+  final DatabaseService _dbService = DatabaseService();
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? Colors.black : Colors.grey.shade100;
-    final cardColor = isDark ? Colors.grey.shade900 : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subtitleColor = isDark ? Colors.white70 : Colors.grey[700];
-
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: const Color(0xfff5f5f5),
       appBar: AppBar(
-        backgroundColor: cardColor,
-        iconTheme: IconThemeData(color: textColor),
-        title: Text(" Orders", style: TextStyle(color: textColor)),
+        elevation: 0,
         centerTitle: true,
-        elevation: 1,
+        title: const Text(
+          "Orders Dashboard",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        ),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xff141E30), Color(0xff243B55)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: orders.length,
-        itemBuilder: (context, index) {
-          final order = orders[index];
-          return Card(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            color: cardColor,
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Status badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color:
-                      _getStatusColor(order['status']).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      order['status'],
-                      style: TextStyle(
-                          color: _getStatusColor(order['status']),
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text("Order ID: ${order['orderId']}",
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: textColor)),
-                  Text("Customer: ${order['customerEmail']}",
-                      style: TextStyle(color: subtitleColor)),
-                  Text("Renter: ${order['renterEmail']}",
-                      style: TextStyle(color: subtitleColor)),
-                  Text("Pickup Location: ${order['pickupLocation']}",
-                      style: TextStyle(color: subtitleColor)),
-                  Text("Delivery Time: ${order['deliveryTime']}",
-                      style: TextStyle(color: subtitleColor)),
-                  Text("Insurance Amount: ${order['insuranceAmount']} OMR",
-                      style: TextStyle(color: subtitleColor)),
-                  Text("Rental Amount: ${order['rentalAmount']} OMR",
-                      style: TextStyle(color: subtitleColor)),
-                  const SizedBox(height: 12),
-                  const Text("Dresses:",
-                      style:
-                      TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 6),
-                  for (var dress in order['dresses'])
-                    Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            dress['image'],
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  color: Colors.grey,
-                                  child: const Icon(Icons.image_not_supported,
-                                      color: Colors.white, size: 20),
-                                ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(dress['name'],
-                              style: TextStyle(color: subtitleColor)),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 45,
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              elevation: 4,
-                            ),
-                            child: const Text(
-                              "Send Delivery Notification",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SizedBox(
-                          height: 45,
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              elevation: 4,
-                            ),
-                            child: const Text(
-                              "Send Return Notification",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                ],
-              ),
-            ),
+      body: StreamBuilder<Map<dynamic, dynamic>>(
+        stream: _dbService.ordersStream(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text("No orders found"));
+          }
+
+          final ordersMap = snapshot.data!;
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: ordersMap.entries.map((userEntry) {
+              final userId = userEntry.key;
+              final userOrdersMap = Map<dynamic, dynamic>.from(userEntry.value);
+
+              // Build a FutureBuilder per user to fetch owner info for all items
+              return FutureBuilder<List<Widget>>(
+                future: _buildUserOrdersList(userOrdersMap),
+                builder: (context, userSnapshot) {
+                  if (!userSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return Column(children: userSnapshot.data!);
+                },
+              );
+            }).toList(),
           );
         },
       ),
     );
   }
+
+  // Fetch renter info for each item and build order cards
+  Future<List<Widget>> _buildUserOrdersList(Map userOrdersMap) async {
+    List<Widget> ordersList = [];
+
+    for (var orderEntry in userOrdersMap.entries) {
+      final orderId = orderEntry.key;
+      final orderData = Map<String, dynamic>.from(orderEntry.value);
+
+      final items = Map<dynamic, dynamic>.from(orderData['items'] ?? {});
+
+      // Populate renter info for each dress
+      for (var itemEntry in items.entries) {
+        final clothId = itemEntry.key;
+        final clothMap = Map<String, dynamic>.from(itemEntry.value);
+
+        final ownerId = clothMap['ownerId'] ?? '';
+        if (ownerId.isNotEmpty) {
+          final renterData = await _dbService.getUserData(ownerId);
+          if (renterData != null) {
+            clothMap['renterEmail'] = renterData['email'] ?? '';
+            clothMap['renterPhone'] = renterData['contactNo'] ?? '';
+            clothMap['renterGovernorate'] = renterData['governorate'] ?? '';
+            clothMap['renterWilayat'] = renterData['wilayat'] ?? '';
+          }
+        }
+
+        orderData['items'][clothId] = clothMap;
+      }
+
+      ordersList.add(_buildOrderCard(orderData));
+    }
+
+    return ordersList;
+  }
+
+  // -------------------- ORDER CARD --------------------
+  Widget _buildOrderCard(Map order) {
+    final items = Map<String, dynamic>.from(order['items'] ?? {});
+    final rentalAmount = order['rentalAmount'] ?? 0.0;
+    final insuranceAmount = order['insuranceAmount'] ?? 0.0;
+    final totalPrice = rentalAmount + insuranceAmount;
+    final status = order['status'] ?? 'Unknown';
+    final totalItems = items.length;
+    final totalQuantity = items.values.fold<int>(
+        0, (sum, item) => sum + ((item['quantity'] ?? 0) as int));
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.white, Colors.grey.shade50],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.07),
+            blurRadius: 15,
+            offset: const Offset(0, 6),
+          )
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Order #${order['orderId']}",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: status == 'Pending'
+                        ? Colors.orange.shade100
+                        : Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: status == 'Pending'
+                          ? Colors.orange.shade800
+                          : Colors.green.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                )
+              ],
+            ),
+
+            const SizedBox(height: 12),
+            Text(
+              "Total Price: ${totalPrice.toStringAsFixed(2)} OMR",
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: Colors.blue),
+            ),
+            Text(
+              "Items: $totalItems | Quantity: $totalQuantity",
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 8),
+
+            // Customer Info
+            const Text(
+              "Customer Info",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black),
+            ),
+            const SizedBox(height: 4),
+            Text("📧 ${order['customerEmail']}"),
+            Text("📞 ${order['customerPhone']}"),
+            Text("📍 ${order['governorate']} / ${order['wilayat']}"),
+
+            const SizedBox(height: 12),
+            const Divider(),
+            const SizedBox(height: 12),
+
+            // Dresses List
+            ...items.entries.map((entry) {
+              final cloth = Map<String, dynamic>.from(entry.value);
+              return _buildDressCard(cloth, order);
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -------------------- DRESS CARD --------------------
+  // -------------------- DRESS CARD --------------------
+  Widget _buildDressCard(Map cloth, Map order) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: cloth["imageBase64"] != null && cloth["imageBase64"].isNotEmpty
+                    ? Image.memory(
+                  base64Decode(cloth["imageBase64"]),
+                  height: 80,
+                  width: 80,
+                  fit: BoxFit.cover,
+                )
+                    : Container(
+                  height: 80,
+                  width: 80,
+                  color: Colors.grey.shade300,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      cloth["name"] ?? "Unknown Dress",
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text("💰 ${cloth['price']} OMR"),
+                    Text("📦 Qty: ${cloth['quantity']}"),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+          const Divider(),
+
+          const Text(
+            "Renter Info",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text("📧 ${cloth['renterEmail'] ?? 'N/A'}"),
+          Text("📞 ${cloth['renterPhone'] ?? 'N/A'}"),
+          if (cloth['renterGovernorate'] != null)
+            Text(
+                "📍 ${cloth['renterGovernorate'] ?? ''} / ${cloth['renterWilayat'] ?? ''}"),
+
+          const SizedBox(height: 12),
+
+          // -------------------- SEND DELIVERY NOTIFICATION BUTTON --------------------
+          ElevatedButton.icon(
+            onPressed: () async {
+              final ownerId = cloth['ownerId'] ?? '';
+              if (ownerId.isEmpty) return;
+
+
+              // Call your delivery notification function
+              await _dbService.sendDeliveryNotification(
+                ownerId: ownerId,
+                clothing: cloth['name'] ?? '',
+                customerPhone: order['customerPhone'] ?? '',
+                governorate: order['governorate'] ?? '',
+                wilayat: order['wilayat'] ?? '',
+                dressImageBase64: cloth['imageBase64'] ?? '',
+              );
+              // Save the rented dress for the renter
+              final renterId = ownerId; // Owner receives the rented clothes
+              final clothId = cloth['id'] ?? cloth['clothId'] ?? '';
+              if (clothId.isNotEmpty) {
+                await _dbService.db
+                    .child("user_rented_clothes")
+                    .child(renterId)
+                    .child(clothId)
+                    .set({
+                  "clothId": clothId,
+                  "name": cloth["name"] ?? "",
+                  "price": cloth["price"] ?? 0,
+                  "imageBase64": cloth["imageBase64"] ?? "",
+                  "quantity": cloth["quantity"] ?? 1,
+                  "status": "rented",
+                  "rentDate": DateTime.now().toIso8601String(),
+                  "customerPhone": order['customerPhone'] ?? "",
+                  "customerGovernorate": order['governorate'] ?? "",
+                  "customerWilayat": order['wilayat'] ?? "",
+                });
+              }
+
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Delivery notification sent!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.notifications_active),
+            label: const Text("Send Delivery Notification"),
+          ),
+        ],
+      ),
+    );
+  }
+
 }

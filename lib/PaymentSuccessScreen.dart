@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:glamcloset/HomePage.dart' as home_page;
+import 'package:glamcloset/AdminDashboardPage.dart';
 import 'package:glamcloset/database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-
 
 class PaymentSuccessScreen extends StatefulWidget {
   const PaymentSuccessScreen({super.key});
@@ -28,22 +27,36 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
         CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
   }
 
-  Future<void> _navigateToHome(BuildContext context) async {
+  Future<void> _navigateNext(BuildContext context) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
 
     if (userId != null) {
+      // Fetch cart items
       final cartItems = await DatabaseService().getUserCart(userId);
 
+      // Complete payment
       await DatabaseService().completePayment(
         userId: userId,
         cartItems: cartItems,
       );
-    }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const home_page.HomePage()),
-    );
+      // Check user type
+      final userData = await DatabaseService().getUserData(userId);
+      final userType = userData?['userType'] ?? 'user';
+
+      // Navigate based on userType
+      if (userType == 'admin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminDashboardPage()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const home_page.HomePage()),
+        );
+      }
+    }
   }
 
   @override
@@ -104,7 +117,7 @@ class _PaymentSuccessScreenState extends State<PaymentSuccessScreen>
               ),
               const SizedBox(height: 60),
               ElevatedButton(
-                onPressed: () => _navigateToHome(context),
+                onPressed: () => _navigateNext(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.green.shade700,

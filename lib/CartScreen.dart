@@ -14,9 +14,7 @@ class CartScreen extends StatefulWidget {
   const CartScreen({super.key, this.rentedItems = const [], this.skipFirebase = false});
 
   @override
-  _CartScreenState createState() => _CartScreenState(
-
-  );
+  _CartScreenState createState() => _CartScreenState();
 }
 
 class _CartScreenState extends State<CartScreen> {
@@ -25,7 +23,9 @@ class _CartScreenState extends State<CartScreen> {
   final userId = FirebaseAuth.instance.currentUser?.uid;
 
   // 🔹 Security deposit per dress
-  final double securityDepositPerItem = 20.0;
+  final double securityDepositPerItem = 5.0;
+
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -36,11 +36,10 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-
   void _loadUserCart() {
-    // Use the passed rentedItems directly
     cartItems = List<Map<String, dynamic>>.from(widget.rentedItems);
     if (userId == null) return;
+
     final userCartRef = FirebaseDatabase.instance.ref('users/$userId/cart');
     userCartRef.onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
@@ -65,7 +64,6 @@ class _CartScreenState extends State<CartScreen> {
     return sum + (price * quantity);
   });
 
-
   double get totalDeposit => cartItems.length * securityDepositPerItem;
 
   double get grandTotal => totalPrice + totalDeposit;
@@ -74,10 +72,6 @@ class _CartScreenState extends State<CartScreen> {
     0,
         (sum, item) => sum + ((item['quantity'] ?? 1) as int),
   );
-
-
-
-  int _currentIndex = 0;
 
   Future<void> restoreItemToStock(Map<String, dynamic> item) async {
     try {
@@ -106,23 +100,17 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-
   void _removeItem(int index) async {
     final removedItem = cartItems[index];
     final userCartRef = FirebaseDatabase.instance.ref('users/$userId/cart');
 
-    // ✅ Restore this item back to stock
     await restoreItemToStock(removedItem);
-
-    // 🧹 Remove from Firebase cart
     await userCartRef.child(removedItem['id']).remove();
 
-    // 🧩 Update local UI instantly
     setState(() {
       cartItems.removeAt(index);
     });
 
-    // ✅ If cart becomes empty → show a message
     if (cartItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cart is empty — items restored to stock!')),
@@ -139,7 +127,6 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
 
-
   Widget _buildCartItem(Map<String, dynamic> item, int index, Animation<double> animation) {
     return SizeTransition(
       sizeFactor: animation,
@@ -151,7 +138,6 @@ class _CartScreenState extends State<CartScreen> {
           final gradient = isDark
               ? [Colors.deepPurple.shade800, Colors.purple.shade900]
               : [Colors.pink.shade300, Colors.purple.shade300];
-
 
           return Container(
             margin: const EdgeInsets.only(bottom: 18),
@@ -196,26 +182,21 @@ class _CartScreenState extends State<CartScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Age: ${item['age'] ?? ''}  |  ${item['price']} OMR',
+                    'Size: ${item['size'] ?? ''}  |  ${item['price']} OMR',
                     style: const TextStyle(color: Colors.white70),
                   ),
-
                 ],
               ),
-
-
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08), // light transparent background
-                  borderRadius: BorderRadius.circular(40), // smooth rounded capsule
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(40),
                   border: Border.all(color: Colors.white30, width: 0.6),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-
-                    // Decrease quantity
                     GestureDetector(
                       onTap: () {
                         int currentQty = item['quantity'] ?? 1;
@@ -223,20 +204,14 @@ class _CartScreenState extends State<CartScreen> {
                           setState(() {
                             item['quantity'] = currentQty - 1;
                           });
-                          _updateItemQuantity(item); // Only update user's cart
+                          _updateItemQuantity(item);
                         } else {
-                          _removeItem(index); // Remove from cart, do not update stock here
+                          _removeItem(index);
                         }
                       },
                       child: const Icon(Icons.remove, color: Colors.white70, size: 13),
                     ),
-
-
-
-
                     const SizedBox(width: 4),
-
-                    // Quantity text
                     Text(
                       '${item['quantity'] ?? 1}',
                       style: const TextStyle(
@@ -245,18 +220,12 @@ class _CartScreenState extends State<CartScreen> {
                         color: Colors.white,
                       ),
                     ),
-
                     const SizedBox(width: 4),
-
-
-                    // Increase quantity
                     GestureDetector(
                       onTap: () async {
                         if (userId == null) return;
 
                         int currentQty = item['quantity'] ?? 1;
-
-                        // 🔹 Fetch latest available count from Firebase
                         final dressRef = FirebaseDatabase.instance.ref('rented_clothes/${item['id']}');
                         final snapshot = await dressRef.get();
 
@@ -276,7 +245,6 @@ class _CartScreenState extends State<CartScreen> {
                           });
                           _updateItemQuantity(item);
                         } else {
-                          // ❌ Show the proper message with the current stock
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text('Cannot add more. Only $availableCount available.'),
@@ -287,21 +255,13 @@ class _CartScreenState extends State<CartScreen> {
                       },
                       child: const Icon(Icons.add, color: Colors.white70, size: 13),
                     ),
-
-
-
-
                     const SizedBox(width: 6),
-
-                    // Divider
                     Container(
                       height: 14,
                       width: 0.8,
                       color: Colors.white24,
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                     ),
-
-                    // Delete button
                     GestureDetector(
                       onTap: () => _removeItem(index),
                       child: const Icon(Icons.delete_outline, color: Colors.white, size: 14),
@@ -309,11 +269,6 @@ class _CartScreenState extends State<CartScreen> {
                   ],
                 ),
               ),
-
-
-
-
-
             ),
           );
         }),
@@ -328,8 +283,7 @@ class _CartScreenState extends State<CartScreen> {
       children: [
         Row(
           children: [
-            if (icon != null)
-              Icon(icon, size: 18, color: Colors.white70),
+            if (icon != null) Icon(icon, size: 18, color: Colors.white70),
             if (icon != null) const SizedBox(width: 6),
             Text(
               label,
@@ -392,41 +346,16 @@ class _CartScreenState extends State<CartScreen> {
         child: Column(
           children: [
             Expanded(
-              child: StreamBuilder(
-                stream: FirebaseDatabase.instance
-                    .ref('users/${FirebaseAuth.instance.currentUser!.uid}/cart')
-                    .onValue,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  if (!snapshot.hasData ||
-                      (snapshot.data! as DatabaseEvent).snapshot.value == null) {
-                    return const Center(child: Text('🛒 Your cart is empty.'));
-                  }
-
-                  final data = Map<String, dynamic>.from(
-                      (snapshot.data! as DatabaseEvent).snapshot.value as Map);
-
-                  final cartItems = data.entries
-                      .map((e) => Map<String, dynamic>.from(e.value))
-                      .toList();
-
-                  return ListView.builder(
-                    itemCount: cartItems.length,
-                    itemBuilder: (context, index) {
-                      return _buildCartItem(cartItems[index], index, kAlwaysCompleteAnimation);
-                    },
-                  );
+              child: cartItems.isEmpty
+                  ? const Center(child: Text('🛒 Your cart is empty.'))
+                  : ListView.builder(
+                itemCount: cartItems.length,
+                itemBuilder: (context, index) {
+                  return _buildCartItem(cartItems[index], index, kAlwaysCompleteAnimation);
                 },
               ),
             ),
-
-
             const SizedBox(height: 10),
-
-            // 🔹 Modern Totals & Payment Section
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -476,15 +405,19 @@ class _CartScreenState extends State<CartScreen> {
                       );
                       return;
                     }
+
+
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => TermsAndConditionsScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => TermsAndConditionsScreen(amount: grandTotal),
+                      ),
                     );
                   },
                   icon: const Icon(Icons.payment_rounded, color: Colors.white),
-                  label: const Text(
-                    'Proceed to Payment',
-                    style: TextStyle(
+                  label: Text(
+                    'Pay ${grandTotal.toStringAsFixed(2)} OMR',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,

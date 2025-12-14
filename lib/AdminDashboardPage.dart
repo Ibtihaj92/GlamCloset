@@ -6,6 +6,7 @@ import 'RentalsReportPage.dart';
 import 'settings_page.dart';
 import 'theme_notifier.dart';
 import 'AdminOrdersPage.dart';
+import 'AdminIssuePage.dart';
 
 class AdminDashboardPage extends StatelessWidget {
   const AdminDashboardPage({super.key});
@@ -106,6 +107,22 @@ class AdminDashboardPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(builder: (_) => SettingsPage()),
                 );
+              },
+            ),
+
+            _buildCard(
+              title: 'Issues',
+              icon: Icons.report_problem,
+              gradient: [Colors.grey, Colors.white24],
+              darkTextColor: Colors.black,
+              isDark: isDark,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AdminIssuePage()),
+                );
+
+
               },
             ),
           ],

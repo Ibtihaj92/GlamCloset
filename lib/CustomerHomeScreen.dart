@@ -8,11 +8,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
-
+import 'CustomerNotificationsPage.dart';
 import 'CartScreen.dart';
 import 'settings_page.dart';
 import 'theme_notifier.dart';
-import 'AccountDetails.dart';
+import 'package:glamcloset/CustomerOrdersPage.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -22,6 +22,7 @@ class CustomerHomeScreen extends StatefulWidget {
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProviderStateMixin {
+
   // ---------------- Variables ----------------
   int _currentIndex = 1;
   List<Map<String, dynamic>> allDresses = [];
@@ -29,6 +30,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
   Set<String> favoriteDressIds = {};
   Set<String> cartDressIds = {};
   final userId = FirebaseAuth.instance.currentUser?.uid;
+  // ---------------- Notifications ----------------
+  int _unreadNotificationsCount = 0;
+  late DatabaseReference _notificationsRef;
 
   late TabController _tabController;
   late TextEditingController _searchController;
@@ -49,6 +53,22 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
   @override
   void initState() {
     super.initState();
+    // Load notifications
+    if (userId != null) {
+      _notificationsRef = FirebaseDatabase.instance.ref('notifications/$userId');
+      _notificationsRef.onValue.listen((event) {
+        final data = event.snapshot.value as Map<dynamic, dynamic>?;
+        if (mounted) {
+          setState(() {
+            _unreadNotificationsCount = data?.values
+                .where((notif) => (notif['status'] ?? '') == 'pending')
+                .length ??
+                0;
+          });
+        }
+      });
+    }
+
 
     _tabController = TabController(length: 1, vsync: this);
     _searchController = TextEditingController();
@@ -437,12 +457,30 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
       ),
     );
   }
+  void _onSearchPressed() {
+    if (_searchController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enter something to search."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+
+    setState(() {
+      _searchQuery = _searchController.text.trim().toLowerCase();
+      _applyFilter();
+    });
+  }
 
   // ---------------- Navigation ----------------
   void _onNavBarTapped(int index) {
     setState(() => _currentIndex = index);
 
     if (index == 0) {
+      // Cart
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -454,21 +492,35 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
               'title': item['title'],
               'age': item['age'],
               'price': item['price'],
-              'image': item['imageBase64']?.isNotEmpty == true ? 'data:image/png;base64,${item['imageBase64']}' : null,
+              'image': item['imageBase64']?.isNotEmpty == true
+                  ? 'data:image/png;base64,${item['imageBase64']}'
+                  : null,
             })
                 .toList(),
           ),
         ),
       );
+    } else if (index == 1) {
+      // Home, stay on this page
     } else if (index == 2) {
+      // Settings
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => SettingsPage(previousPage: CustomerHomeScreen()),
         ),
       );
+    } else if (index == 3) {
+      // My Rentals → CustomerOrdersPage
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const CustomerOrdersPage(),
+        ),
+      );
     }
   }
+
 
   void _openWishlistScreen() {
     final themeNotifier = Provider.of<ThemeNotifier>(context, listen: false);
@@ -557,7 +609,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
               decoration: InputDecoration(
                 hintText: 'Search clothes...',
                 hintStyle: TextStyle(color: isDark ? Colors.white70 : Colors.grey[600]),
-                prefixIcon: Icon(Icons.search, color: isDark ? Colors.white : Colors.grey[600]),
+                prefixIcon: IconButton(
+                  icon: Icon(Icons.search, color: isDark ? Colors.white : Colors.grey[600]),
+                  onPressed: _onSearchPressed,
+                ),
                 suffixIcon: _buildVoiceInput(),
                 filled: true,
                 fillColor: isDark ? Colors.grey[800] : Colors.grey[200],
@@ -569,7 +624,46 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
                 _applyFilter();
               },
             ),
-            actions: [IconButton(icon: const Icon(Icons.favorite), onPressed: _openWishlistScreen)],
+            actions: [
+              // Wishlist
+              IconButton(
+                icon: const Icon(Icons.favorite),
+                onPressed: _openWishlistScreen,
+              ),
+              // Notifications
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CustomerNotificationsPage(),
+                        ),
+                      );
+                    },
+                  ),
+                  if (_unreadNotificationsCount > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$_unreadNotificationsCount',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+
           ),
           body: ListView(
             padding: const EdgeInsets.all(16),
@@ -595,6 +689,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with TickerProv
               BottomNavigationBarItem(icon: Icon(Icons.shopping_cart), label: 'Cart'),
               BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
               BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+              BottomNavigationBarItem(icon: Icon(Icons.shopping_bag),label: 'My Rentals' ),
+
             ],
           ),
         ),

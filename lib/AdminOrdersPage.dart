@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'database.dart';
 import 'RenterNotificationsPage.dart';
+import 'theme_notifier.dart';
+import 'package:provider/provider.dart';
 
 class AdminOrdersPage extends StatefulWidget {
   @override
@@ -13,8 +15,11 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Provider.of<ThemeNotifier>(context).isDarkMode;
+    final backgroundColor = isDark ? Colors.grey[900]! : Colors.grey[50]!;
+
     return Scaffold(
-      backgroundColor: const Color(0xfff5f5f5),
+      backgroundColor: backgroundColor,
       appBar: AppBar(
         elevation: 0,
         centerTitle: true,
@@ -25,7 +30,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xff141E30), Color(0xff243B55)],
+              colors: [Color(0xf0ffffff)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -46,9 +51,8 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
               final userId = userEntry.key;
               final userOrdersMap = Map<dynamic, dynamic>.from(userEntry.value);
 
-              // Build a FutureBuilder per user to fetch owner info for all items
               return FutureBuilder<List<Widget>>(
-                future: _buildUserOrdersList(userOrdersMap),
+                future: _buildUserOrdersList(userOrdersMap, isDark),
                 builder: (context, userSnapshot) {
                   if (!userSnapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
@@ -64,7 +68,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
   }
 
   // Fetch renter info for each item and build order cards
-  Future<List<Widget>> _buildUserOrdersList(Map userOrdersMap) async {
+  Future<List<Widget>> _buildUserOrdersList(Map userOrdersMap, bool isDark) async {
     List<Widget> ordersList = [];
 
     for (var orderEntry in userOrdersMap.entries) {
@@ -92,14 +96,14 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
         orderData['items'][clothId] = clothMap;
       }
 
-      ordersList.add(_buildOrderCard(orderData));
+      ordersList.add(_buildOrderCard(orderData, isDark));
     }
 
     return ordersList;
   }
 
   // -------------------- ORDER CARD --------------------
-  Widget _buildOrderCard(Map order) {
+  Widget _buildOrderCard(Map order, bool isDark) {
     final items = Map<String, dynamic>.from(order['items'] ?? {});
     final rentalAmount = order['rentalAmount'] ?? 0.0;
     final insuranceAmount = order['insuranceAmount'] ?? 0.0;
@@ -113,7 +117,9 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
       margin: const EdgeInsets.only(bottom: 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.white, Colors.grey.shade50],
+          colors: isDark
+              ? [Colors.grey.shade800, Colors.grey.shade700]
+              : [Colors.white, Colors.grey.shade50],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -195,7 +201,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
             // Dresses List
             ...items.entries.map((entry) {
               final cloth = Map<String, dynamic>.from(entry.value);
-              return _buildDressCard(cloth, order);
+              return _buildDressCard(cloth, order, isDark);
             }).toList(),
           ],
         ),
@@ -204,13 +210,12 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
   }
 
   // -------------------- DRESS CARD --------------------
-  // -------------------- DRESS CARD --------------------
-  Widget _buildDressCard(Map cloth, Map order) {
+  Widget _buildDressCard(Map cloth, Map order, bool isDark) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? Colors.grey.shade800 : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
@@ -281,8 +286,6 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
               final ownerId = cloth['ownerId'] ?? '';
               if (ownerId.isEmpty) return;
 
-
-              // Call your delivery notification function
               await _dbService.sendDeliveryNotification(
                 ownerId: ownerId,
                 clothing: cloth['name'] ?? '',
@@ -291,8 +294,8 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
                 wilayat: order['wilayat'] ?? '',
                 dressImageBase64: cloth['imageBase64'] ?? '',
               );
-              // Save the rented dress for the renter
-              final renterId = ownerId; // Owner receives the rented clothes
+
+              final renterId = ownerId;
               final clothId = cloth['id'] ?? cloth['clothId'] ?? '';
               if (clothId.isNotEmpty) {
                 await _dbService.db
@@ -313,7 +316,6 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
                 });
               }
 
-
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Delivery notification sent!'),
@@ -331,9 +333,70 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
             icon: const Icon(Icons.notifications_active),
             label: const Text("Send Delivery Notification"),
           ),
+
+          // -------------------- RETURN DRESS BUTTON --------------------
+          ElevatedButton.icon(
+            onPressed: () async {
+              final ownerId = cloth['ownerId'] ?? '';
+              if (ownerId.isEmpty) return;
+
+              await _dbService.sendReturnNotification(
+                customerId: ownerId,
+                clothing: cloth['name'] ?? '',
+                renterEmail: cloth['renterEmail'] ?? '',
+                renterPhone: cloth['renterPhone'] ?? '',
+                renterGovernorate: cloth['renterGovernorate'] ?? '',
+                renterWilayat: cloth['renterWilayat'] ?? '',
+                dressImageBase64: cloth['imageBase64'] ?? '',
+              );
+
+              final clothId = cloth['id'] ?? cloth['clothId'] ?? '';
+              if (clothId.isNotEmpty) {
+                await _dbService.db
+                    .child("user_rented_clothes")
+                    .child(ownerId)
+                    .child(clothId)
+                    .update({
+                  "status": "returned",
+                  "returnDate": DateTime.now().toIso8601String(),
+                });
+              }
+
+              final customerId = (order['userId'] ?? '').toString();
+              if (customerId.isNotEmpty) {
+                await _dbService.sendReturnNotification(
+                  customerId: customerId,
+                  clothing: cloth['name'] ?? '',
+                  renterEmail: cloth['renterEmail'] ?? '',
+                  renterPhone: cloth['renterPhone'] ?? '',
+                  renterGovernorate: cloth['renterGovernorate'] ?? '',
+                  renterWilayat: cloth['renterWilayat'] ?? '',
+                  dressImageBase64: cloth['imageBase64'] ?? '',
+                );
+              } else {
+                print(
+                    "⚠️ order['userId'] is empty — return notification not sent to customer.");
+              }
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Return notification sent!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.keyboard_return),
+            label: const Text("Return Dress"),
+          ),
         ],
       ),
     );
   }
-
 }
